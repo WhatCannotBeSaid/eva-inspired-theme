@@ -192,7 +192,13 @@ dim tint behind it is removed; the panel and click-outside-to-close are untouche
 
 ## Install
 
-Straight from the public repository:
+From npm — a versioned tarball with the browser bundle already built in:
+
+```
+dsh plugin --profile <profile> add eva-inspired-theme
+```
+
+Straight from the public repository, which tracks its default branch:
 
 ```
 dsh plugin --profile <profile> add github:WhatCannotBeSaid/eva-inspired-theme
@@ -200,7 +206,8 @@ dsh plugin --profile <profile> add github:WhatCannotBeSaid/eva-inspired-theme
 
 The package carries a `prepare` script that runs exactly that build, so an
 install straight from the Git URL produces the bundle for you before the package
-is linked. From a local checkout or a clone of it:
+is linked; the npm tarball ships `client.js` ready-made and runs no build. From a
+local checkout or a clone of it:
 
 ```
 npm run build                                              # writes the browser bundle

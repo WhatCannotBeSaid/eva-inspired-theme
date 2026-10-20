@@ -13,7 +13,7 @@
     "neon",
     "eva-inspired-theme"
   ],
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "(MIT AND CC-BY-NC-SA-4.0 AND OFL-1.1)",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
@@ -45,6 +45,8 @@
     "LICENSE-CC-BY-NC-SA-4.0.txt",
     "NOTICE",
     "README.md",
+    "docs/preview-light.jpg",
+    "docs/preview-dark.jpg",
     "src",
     "build"
   ],

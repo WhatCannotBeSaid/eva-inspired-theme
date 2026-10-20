@@ -117,13 +117,19 @@
 
 ## 安装
 
-直接从公开仓库装：
+从 npm 装——带版本号的 tarball，浏览器束已经构建好放在里面：
+
+```
+dsh plugin --profile <profile> add eva-inspired-theme
+```
+
+或直接从公开仓库装，跟的是默认分支：
 
 ```
 dsh plugin --profile <profile> add github:WhatCannotBeSaid/eva-inspired-theme
 ```
 
-包里带一个 `prepare` 脚本，跑的正是这条构建，所以从 Git URL 安装时，包被 link 之前束就已经生成好。
+从 Git URL 安装会跑包里那个 `prepare` 脚本，跑的正是这条构建，所以包被 link 之前束就已经生成好；npm 的 tarball 里 `client.js` 是现成的，不跑构建。
 
 在本地 checkout 或它的 clone 里：
 
