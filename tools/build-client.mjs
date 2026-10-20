@@ -362,14 +362,10 @@ const variableFor = (paper) => `--cp-wall-${paper.id}`
  * block as the wallpapers as a data URL, so the theme remains one self-contained
  * bundle with no second file to fetch and no runtime path to resolve.
  *
- * D33 originally shipped separate daylight and dark marks. On 2026-10-07 the user
- * explicitly replaced the daylight mark with the dark one, so both modes now publish
- * the SAME `brand-mark-dark.png`. Do not keep a second unused data URL in the bundle:
- * the old daylight asset remains in `build/brand-mark.png` only for rollback, while
- * this build reads one file and emits one variable. The selected mark is cropped to
- * the subject, padded by 6%, and brighter than the retired daylight mark (solid-pixel
- * mean luminance 147 vs 106 of 255). Generator: `tools/make-brand-mark-dark.py`. */
-const brandMark = readFileSync(join(ROOT, 'build', 'brand-mark-dark.png')).toString('base64')
+ * Both modes use the user-supplied diagonal SVG, copied unchanged into build/.
+ * Its square viewBox and embedded PNG are preserved; no cropping or recolouring.
+ * Older brand-mark*.png files are retained but no longer embedded. */
+const brandMark = readFileSync(join(ROOT, 'build', 'whale-maid-small-monochrome-diagonal.svg')).toString('base64')
 
 /* ---------------------------------------------------------------- fonts (D75)
  * 2026-10-08, round 35: the user asked for the new-session headline in a calligraphic
@@ -467,7 +463,7 @@ const declarations = [
   ...wallpapers.map((paper) => `  ${variableFor(paper)}: url("${artFor(paper)}");`),
   `  --cp-pick-light: ${pick('light')};`,
   `  --cp-pick-dark: ${pick('dark')};`,
-  `  --cp-brand-mark: url("data:image/png;base64,${brandMark}");`,
+  `  --cp-brand-mark: url("data:image/svg+xml;base64,${brandMark}");`,
   '}',
 ].join('\n')
 

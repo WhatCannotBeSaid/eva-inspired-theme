@@ -49,7 +49,8 @@ names. Credits are in [Fan work and attribution](#fan-work-and-attribution).
 | Token layer | 55 measured overrides (41 in the light arm, 14 in the dark arm) on a single removable layer |
 | Wallpaper layer | No artwork ships in this repository; the browser fetches it at paint time. The tracked manifest points at two third-party pictures — the light default on haowallpaper.com, the dark one on wallhaven — and the maintainer's own machine embeds local copies instead. Surface alphas are solved against a WCAG contrast budget |
 | Boot mask | Plays once per build — the mark is derived from the bundle, so a new build replays it; `?boot=0` skips one, `?boot=1` forces one. Timings and triggers unchanged |
-| Brand mark | One client-side illustration, two tones |
+| Brand mark | One monochrome SVG illustration, drawn at 28×28 inside the 36×36 slot beside the wordmark |
+| Composer row | The model and effort triggers carry no chevrons; on a narrow row both become 28×28 icon buttons level with the add and dictation buttons, and the whole row shares one seam (6px wide, 3px narrow) |
 | Also inside | A plugin on/off switch and a session-row status rail, both vendored from MIT plugins; a pin button on every workspace and session row; a switch for the WeChat workspace on the workspace row, shown only while WeChat holds an account |
 | Language | All user-facing text goes through the official locale service (zh / en) |
 
@@ -62,9 +63,10 @@ install it.
 ## What it changes in the interface
 
 Removing the package takes the layer away again and every official element comes
-back. In between, the theme **hides five official controls, rewrites the sidebar
-identity line, and replaces one page's heading**. All of it is CSS plus a few client
-effects — the official DOM is never rewritten — but here is where things went.
+back. In between, the theme **hides six official entries, rewrites the sidebar
+identity line, replaces one page's heading, and reshapes the composer's control
+row**. All of it is CSS plus a few client effects — the official DOM is never
+rewritten — but here is where things went.
 
 ### The brand row is three click zones
 
@@ -85,6 +87,13 @@ activation (Enter or Space on the focused button) and any click held with a modi
 key are left alone. Collapse the sidebar to a rail and there is no brand button, so
 there are no zones either.
 
+While the DeepSeek account plugin is enabled it puts an account card into the
+Settings slot, in place of the official Settings button. The theme takes that card
+out of the layout entirely — no placeholder, no leftover gap — and `SYSTEM` stays
+the one Settings entry on the row. Because the card is gone, the click no longer
+goes through a synthesised keystroke (a dead click on the desktop build); it asks the
+host's shortcut registry to open settings, which is the door that build answers.
+
 ### Hidden official entries
 
 | Entry | Where | Way back |
@@ -95,6 +104,7 @@ there are no zones either.
 | 「设置」 row and its launcher button | sidebar | click `SYSTEM`, or `Ctrl+,` |
 | 「收起侧栏」 button | left sidebar only; the right sidebar's stays visible | the collapse command itself is untouched |
 | the session list's bottom fade | sidebar | it only dimmed the last row |
+| the account card (only while the DeepSeek account plugin is enabled) | sidebar, in the Settings slot | removed outright, with no gap left where it stood; `SYSTEM` still opens Settings |
 
 Where a way back names a keyboard shortcut, that is the desktop default — `Ctrl+N` for
 a new session, `Ctrl+,` for settings, both of them the official ones, unchanged by this
@@ -104,6 +114,14 @@ Nothing else in the sidebar moves. The workspace and session list keeps the offi
 `flex: 1` scrolling area, and the bottom area still shows whatever a third-party
 plugin registers into `sidebar.footer.action` (a ledger card, say) in the position the
 host gives it.
+
+### The nav area sits under the title bar (desktop shell only)
+
+The first nav button is level with the 对话 / 轨迹 tab row of the main area instead of
+sitting below it, and the Settings row moves underneath the nav instead of above it.
+That is the one visible reordering in the sidebar, and it applies to the desktop shell
+only — the browser build has no title-bar strip to align to, so its layout stays the
+one the host draws.
 
 ### The new session page (hero)
 
@@ -119,13 +137,32 @@ That line is set in **Great Vibes** (SIL OFL 1.1, shipped in the package) at
 generated content, so find-in-page and screen readers do not see it, and it does not
 follow the interface language — a Chinese and an English user both read the German.
 
+### The composer's control row
+
+The row above Send belongs to the host; the theme only reshapes it.
+
+- The **model** and **effort** triggers carry no disclosure chevron. Their open state
+  is already the trigger's own highlight, so the arrow only repeated it.
+- The **permission** trigger loses its arrow as well, and gains back the right padding
+  the arrow was holding. Its word is its state — the label changes with the level — so
+  nothing is lost by dropping the arrow.
+- On a narrow row both triggers become 28×28 icon buttons: same box, same ink as the
+  add and dictation buttons beside them. A wide row keeps the text labels.
+- The whole row shares one seam — 6px when it has room, 3px when it does not — so the
+  four controls read as one strip instead of four drifting groups.
+
+The four official popovers that hang off that row — permission, session stats, token
+usage and the context meter — are centred on their triggers instead of left-aligned
+with them. The sidebar's own view-options menu is left where the host puts it.
+
 ### What the theme adds
 
 - A **pin button** on every workspace and session row (置顶工作区 / Pin workspace,
   following the host's language). The pinned set is kept in browser storage under
   `eva-theme/workspace-pins`; the order it produces is written through the host's own
   insert-before API, so it survives a restart — and, unlike the pin set, it also
-  survives removing the theme.
+  survives removing the theme. On the workspace row it sits in the row's own action
+  group, so it takes the same 15px seam as the two official buttons beside it.
 - A **WeChat workspace switch** on the 「工作区」 row, on the same line as Search and the
   view options: one click leaves only the workspace `dsh-wechat-plugin` creates — its
   conversations, without that workspace's own group header — and another click puts the
@@ -234,7 +271,7 @@ asserted (`wall.2`, `wall.6`, `wall.7`, `wall.8`).
 npm run verify
 ```
 
-Runs every gate: syntax check of both bundle halves, the self-check (117
+Runs every gate: syntax check of both bundle halves, the self-check (126
 assertions), the token audit (55 overrides, exactly the planned 55), and a rebuild
 comparison that proves `client.js` is in sync with `src/`.
 
@@ -250,7 +287,7 @@ without licensing them. No trademark rights are granted here.
 |---|---|---|
 | Our code — `index.js`, `src/`, `tools/`, `client.js` | MIT | Keep the copyright and licence notice. Commercial use of the code is fine. |
 | Project text — this README, `docs/`, `NOTICE`, `LICENSE` | CC BY-NC-SA 4.0 | Credit, link the licence, note changes, keep it non-commercial, share alike. |
-| Brand marks — `build/brand-mark*.png`, `build/brand-mark.jpg` | CC BY-NC-SA 4.0 | Same terms, and this is third-party artwork: see below. |
+| Brand marks — `build/whale-maid-small-monochrome-diagonal.svg`, `build/brand-mark*.png`, `build/brand-mark.jpg` | CC BY-NC-SA 4.0 | Same terms, and this is third-party artwork: see below. |
 | Font — `build/great-vibes-latin.woff2` | SIL OFL 1.1 | Keep the notice; do not sell the font on its own. |
 | Vendored halves — `build/plugin-toggle.js`, `build/session-eva-status.js` | MIT (two other plugins, same author) | Keep both notices; they are inlined into `client.js` too. |
 | The two background wallpapers | **Hotlinked, not distributed, not licensed here.** | This project grants you no rights in them; the credits below are attribution only. |
@@ -276,10 +313,13 @@ from khara. The `EVA` in the package name is a reference, not a claim of origin.
 **Brand mark.** Character 溟月 by 上善无形 (original character,
 <https://space.bilibili.com/4456176>). DeepSeek-elements second pass by ZipZipPipe
 (GPT Image 2, <https://space.bilibili.com/4168597>). Refined repair by QYQCAMIAO.
-Licensed CC BY-NC-SA 4.0 — credit, non-commercial, share alike. This repository
-cropped and resized the illustration to 256×256 and derived the dark variant with
-`tools/make-brand-mark-dark.py`; both derived images stay under the same terms.
-Commercial use of this artwork needs permission from the rights holders above.
+Licensed CC BY-NC-SA 4.0 — credit, non-commercial, share alike. The illustration
+ships as the supplied SVG, `build/whale-maid-small-monochrome-diagonal.svg`, drawn
+unmodified: no crop, no recolour, no per-mode variant; the brand row keeps its 36×36
+slot and click box, with the SVG drawn at 28×28 inside it. The earlier cropped
+256×256 PNGs and the dark variant derived by `tools/make-brand-mark-dark.py` stay in
+the tree for rollback only, under the same terms. Commercial use of this artwork
+needs permission from the rights holders above.
 
 **Font.** "Great Vibes" by TypeSETit, SIL OFL 1.1.
 

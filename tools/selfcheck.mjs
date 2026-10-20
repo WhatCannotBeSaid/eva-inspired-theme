@@ -566,6 +566,70 @@ checks.check('css.15', 'the art is filtered inside the blur+brightness window th
   return true
 })
 
+checks.check('css.16', 'the account card is hidden by its menu trigger, and its row gives back the gap', () => {
+  /* Round 64 (2026-10-20, D101). The user: 「在启用 DeepSeek 账号时隐藏导航区账号卡，且不
+     占位、不留空白。」 Two things can silently regress here, and both stay invisible until a
+     machine has the account plugin enabled:
+
+     ① The judgement. When @deepseek-ai/dsh-client-ui-settings-account is enabled it is the
+        single registrant of settings.launcher, so the slot holds a Menu trigger four levels
+        down (div[data-slot] > div > span > button) and NOT a direct-child button -- D62's
+        and D68's `> button` rules match nothing there. The trigger's own marker is
+        aria-haspopup="menu"; the official fallback button hard-codes aria-haspopup="dialog",
+        so the two are mutually exclusive and only one can ever be present. Anything else
+        would either miss the card or take an unrelated node: data-collapsed is also used by
+        dsh-client-ui-trajectory, and data-signed-out describes sign-in state rather than
+        "this is the account card".
+     ② The gap. Hiding the card's subtree leaves triggerRow's own `margin: 4px -2px`
+        (rail: `8px 0 10px`) standing with nothing inside it -- exactly the 空白 the user
+        asked not to have. So a companion rule zeroes the VERTICAL margins of the row that
+        directly holds that slot; horizontal stays, or the row's width and indentation move
+        with it. */
+  const sheet = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const hidden = /\[data-slot='sidebar'\]\s+\[data-slot='settings\.launcher'\]:has\(\s*button\[aria-haspopup='menu'\]\s*\)\s*\{[^}]*display:\s*none/.exec(sheet)
+  if (hidden === null) {
+    return "no rule hides the settings.launcher slot when it holds a button[aria-haspopup='menu']"
+  }
+  const cardRules = sheet.match(/[^{}]*\[data-slot='settings\.launcher'\][^{}]*\{[^}]*\}/g) ?? []
+  const wrongKey = cardRules.filter((rule) => /:has\(\s*button\[data-/.test(rule))
+  if (wrongKey.length > 0) {
+    return 'the account card is identified by an attribute another package also ships: ' + wrongKey.join(' | ')
+  }
+  const gapRule = /div:has\(\s*>\s*\[data-slot='settings\.launcher'\][^{]*button\[aria-haspopup='menu'\][^{]*\)\s*\{[^}]*margin-top:\s*0[^}]*margin-bottom:\s*0/.exec(sheet) ??
+    /div:has\(\s*>\s*\[data-slot='settings\.launcher'\][^{]*button\[aria-haspopup='menu'\][^{]*\)\s*\{[^}]*margin-bottom:\s*0[^}]*margin-top:\s*0/.exec(sheet)
+  if (gapRule === null) {
+    return 'the row holding the hidden card keeps its vertical margins, so the slot leaves 8px (18px in the rail) of blank space'
+  }
+  if (/height\s*:/.test(hidden[0])) {
+    return 'the hide rule pins a height instead of taking the subtree out of the layout'
+  }
+  /* The other half of the same decision, asserted where it is written. Round 68
+     (2026-10-20) corrected this half once already: a synthesised keydown never
+     reaches the command registry on the desktop build, because
+     dsh-client-shortcuts installs its DOM listener with native = true there and
+     returns before dispatch (client.js:813 'if (native) return'). So the fallback
+     must ask the registry directly -- ctx.shortcuts.invoke('settings.open', ...) --
+     and only keep the chord as a secondary door for builds without the service. */
+  if (!/ctx\.get\('shortcuts'\)/.test(clientJs)) {
+    return 'the settings fallback never asks the shortcuts service, so on the desktop build (native keyboard bridge) it is a dead click'
+  }
+  if (!/registry\.invoke\(\s*'settings\.open'/.test(clientJs)) {
+    return "the settings fallback invokes settings.open somewhere other than the shortcut registry, which is the only invocable door a ShortcutsService exposes"
+  }
+  if (!/data-shortcut-modal/.test(clientJs)) {
+    return 'the settings fallback cannot tell whether Settings is already open, so the command could not close it'
+  }
+  /* The chord stays as the fallback of the fallback, and it must still pick the
+     runtime's own binding rather than a fixed one. */
+  if (!/document\.documentElement\.dataset\.platform/.test(clientJs)) {
+    return 'the settings fallback does not read the runtime marker, so it cannot pick the right chord'
+  }
+  if (!/altKey:\s*!desktop/.test(clientJs)) {
+    return 'the settings fallback sends one fixed chord instead of the one this runtime binds'
+  }
+  return true
+})
+
 /* 「闸门开启」 landed on 2026-10-06: two source files, three build changes, no host
    half. The checks below pin the parts that are silent when they break — an escaping
    slip that only shows up as an import failure, or a fallback clock that leaves a
@@ -759,7 +823,7 @@ checks.check('cli.11c', 'the client half writes browser storage only for the nam
   }
   return true
 })
-checks.check('cli.11d', 'the client half owns exactly ten effects', () => {
+checks.check('cli.11d', 'the client half owns exactly eleven effects', () => {
   /* Nine of these were already counted when rounds 41-45 built the 工作区 row's entry: five of the
      theme's own (token layer, liquid-glass maps, paint layer, boot mask, the brand row's three-zone
      bridge since round 25), two registered from inside the vendored plugin-toggle switch, one from
@@ -774,9 +838,16 @@ checks.check('cli.11d', 'the client half owns exactly ten effects', () => {
      This round (2026-10-15) added nothing here either: the account gate is more lines inside
      the tenth effect, not an eleventh one.
      (The host motion budget, which this file used to register as an eleventh, was retired after the
-     round-51 snapshot this text came from.) */
+     round-51 snapshot this text came from.)
+
+     Round 63 (2026-10-20) added the ELEVENTH: the composer's four OFFICIAL panels (权限 / 会话统计 /
+     Token 用量 / 上下文已用) are centred on their trigger. It is a separate effect rather than more
+     lines inside the paint layer because what it writes is an inline `left` on portaled boxes the
+     theme's sheet cannot reach (the official placement is `useAnchoredPosition`, and an inline
+     `left` beats any selector), and it has to follow the official placement across scroll, resize
+     and ResizeObserver ticks -- a lifecycle the paint effect does not have. */
   const effects = client.match(/ctx\.effect\(/g) ?? []
-  if (effects.length !== 10) return `${effects.length} ctx.effect() calls, expected exactly 10`
+  if (effects.length !== 11) return `${effects.length} ctx.effect() calls, expected exactly 11`
   if (!/tag\.dataset\.pluginCss = PLUGIN_ID \+ '\/theme\.css'/.test(client)) {
     return 'the paint layer is not namespaced'
   }
@@ -784,6 +855,7 @@ checks.check('cli.11d', 'the client half owns exactly ten effects', () => {
   if (!/'evangelion: brand row zones'/.test(client)) return 'the brand row bridge has no label'
   if (!/'evangelion: workspace pins'/.test(client)) return 'the workspace pin effect has no label'
   if (!/'evangelion: wechat workspace switch'/.test(client)) return 'the WeChat switch has no label'
+  if (!/'evangelion: centred panels'/.test(client)) return 'the panel-centring effect has no label'
   if (!/applyPluginToggle\(ctx\)/.test(client)) return 'the vendored toggle is never applied'
   return /applySessionEvaStatus\(ctx\)/.test(client) || 'the vendored session rail is never applied'
 })
@@ -1125,7 +1197,21 @@ checks.check('cli.25', 'the workspace pin control is injected and moves rows off
   if (!client.includes(head) || !client.includes(tail)) {
     return 'the pin artwork is not the official path data'
   }
-  return /data-eva-ws-pin-button/.test(client) || 'the pin control carries no contract attribute'
+  if (!/data-eva-ws-pin-button/.test(client)) return 'the pin control carries no contract attribute'
+  /* Round 64 (2026-10-20): the pin's SEAM. The first official button is not a direct child
+     of rowActions -- it sits inside the menu trigger's own span wrapper, which has no gap
+     of its own. Inserting there (the round-39 shape) put the pin flush against the menu
+     button (measured: 0px) while the official pair kept rowActions' 15px, so the row read
+     as one tight pair plus one loose seam. The fix climbs from the first button to the
+     row's own child and inserts there, which is what makes all three siblings under the
+     one flex gap. Pinned as two lookaheads in the same entry: the climb must exist, and
+     the round-39 shape must not come back. */
+  const climbs = /while \(node !== null && node\.parentElement !== null && node\.parentElement !== row\)/
+  if (!climbs.test(client)) return "the pin no longer climbs to the row own child"
+  if (/var anchor = row\.querySelector\('button'\)/.test(client)) {
+    return "the pin is back inside the wrapper of the first button, where the row gap cannot reach it"
+  }
+  return true
 })
 /* Rounds 41-44 (2026-10-09/10): the 工作区 row's entry button. Round 41 made it a Telegram
    conversation filter, round 42 added a 微信 one beside it, rounds 43-44 turned the 微信 one

@@ -4002,3 +4002,319 @@ npm run verify          → exit code 0
 - **CRLF**：`src/theme.css`、`tools/selfcheck.mjs`、`docs/design.md`、`docs/render-report.md` 全是 CRLF。按 `'\n'` 切分再拼回去会把 `\r` 留在行尾，断言「上一行是空的」就会假失败。改法一律是整文件读、改完写回时保持 CRLF，并当场核「CRLF 计数 == 行数 - 1」。
 - **构建是产物判据**：`client.js` 被 `.gitignore` 排除，看改动只看源码 `git status`，但**生效**与否只看 `--check` 与 profile 软链那份的 sha1。
 - **两套 D 编号各走各的**：`docs/design.md` 记 **D95**，本节是第 **59** 节 / 第六十一轮 —— 不要混抄。
+
+## 63. 第六十五轮：置顶按钮插进 `rowActions`，三颗按钮共用一条缝（D99）（2026-10-20 追加）
+
+> 第 60–62 节留给 D96／D97／D98 那几轮，尚未成文，所以节号跳到这里。轮次号按「D96–D98 各占一轮」推算；若与真实轮次对不上，以 D 编号为准 —— `docs/design.md` 的 D 编号才是权威。
+
+用户 2026-10-20 逐字：「将工作区固定按钮的间距调整为跟该行另外两个按钮的间距相同。」
+
+### 63.1 一句话结论
+
+间距不在按钮上，在**挂点**上。置顶按钮原先被插进了菜单按钮的包装 `<span>` 里，那个 span 的
+`gap` 是默认值 0，所以「置顶 ↔ 菜单」是 **0px**，而「菜单 ↔ 新会话」是 `rowActions` 的 **15px**。
+把它爬到 `rowActions` 的下一层当兄弟插进去，三颗按钮就只剩一条缝：**15px / 15px**。
+
+### 63.2 根因：flex 的缝只发给直接子元素
+
+官方行的结构（`div.hIlkoa_projectRow[data-row-key="workspace:<key>"]`）：
+
+```
+span.hIlkoa_rowActions            display:none → hover/menuOpen 时 inline-flex; gap:15px
+├─ span._root_4ub78_1             display:flex; gap:normal(0)   ← 菜单按钮的包装
+│  └─ button.hIlkoa_iconButton    三横线，IconEllipsisOutlineRegular
+└─ button.hIlkoa_iconButton       新会话，IconNewChatOutlineRegular
+```
+
+`rowActions` 的直接子元素只有 **两个**，所以 15px 只出现在两个**子元素之间**。第 39 轮的实现是
+`var anchor = row.querySelector('button')` 再 `host = anchor.parentElement` —— 拿到的 `host` 是那个
+包装 span，不是 `rowActions`。置顶按钮因此成了包装 span 里的第二个孩子，和菜单按钮之间走的是
+包装自己的 `gap: 0`。
+
+这也解释了一个容易误判的现象：官方三处 `rowActions` 家族里只有这一处 `gap` 是 15px
+（设置页模型行是 4px、Cordis 面板是 10px），改 CSS 变量救不了——**外层 gap 进不了内层 gap:0 的容器**。
+
+### 63.3 实测：改前 0 + 15，改后 15 + 15
+
+真机 19390（`-Profile eva-preview`，只装本主题，`node_modules/EVA-Inspired-Theme` 是指向仓库的软链）。
+测量办法：先 `actions.style.display = 'inline-flex'` 把 hover 才出现的行强制展开，再对
+`[...actions.children]` 逐项取 `getBoundingClientRect()`，相邻两项算 `l - prev.r`。
+
+改前（第 39 轮形状）：
+
+```
+children = [pin, span(official), button(official)]
+rect     = pin 197-213 | menu 213-229 | newchat 244-260
+gaps     = [0, 15]                                   ← 紧，松
+```
+
+改后：
+
+```
+children = [PIN, SPAN(official), OFFICIAL]
+rect     = PIN 182-198 | SPAN 213-229 | OFFICIAL 244-260
+gaps     = [15, 15]     same: true     pinInActions: true
+```
+
+`pinInActions: true` 是另一条独立的断言：`rowActions.firstElementChild` 现在就是 `[data-eva-ws-pin-button]`，
+而它的 `parentElement` 是 `rowActions` 本身。改前这条是 `false`，`parentElement` 是包装 span。
+
+### 63.4 代价：官方两个按钮整体左移 31px
+
+改前置顶按钮塞在包装内，只吃它自己的 16px，官方两个按钮位置**零变化**。改后三者同父，
+置顶占 16px + 一条 15px 的缝，官方两个按钮因此左移 **31px**。
+
+这是「与官方同节奏」必须付的账，不是副作用。若之后觉得两个官方按钮原来靠右更顺眼，
+对称的退法是把它放到末尾：把 `insertBefore(button, host.firstChild)` 换成 `appendChild(button)`，
+位移就全落到置顶按钮那一侧，缝仍是 15px。
+
+### 63.5 改到的文件
+
+- `src/client.js` paint() 里那段（原 992–1000 行）整段重写：从第一个 button 沿 `parentElement`
+  爬到行的直接子元素，再 `insertBefore(button, host.firstChild)`。注释里原文记下了改前的实测像素，
+  免得下一个人再猜一次为什么不做成 `margin-left`。
+- `tools/selfcheck.mjs` 的 `cli.25` 尾部加两条绊线（用 lookahead，不靠相邻）：
+
+```js
+const climbs = /while \(node !== null && node\.parentElement !== null && node\.parentElement !== row\)/
+if (!climbs.test(client)) return "the pin no longer climbs to the row own child"
+if (/var anchor = row\.querySelector\('button'\)/.test(client)) {
+  return "the pin is back inside the wrapper of the first button, where the row gap cannot reach it"
+}
+```
+
+`theme.css` **一行没改**。这不是能靠规则修的间距。
+
+### 63.6 门禁读数
+
+```
+node tools/build-client.mjs
+  → 742591 chars (756526 bytes), 55 tokens, 2 wallpapers, boot mark eva-boot/f39fbc5e
+npm run verify   exit 0
+  → 125 assertions, 0 failed, 125 passed
+  → AUDIT OK — 55 overrides, exactly the planned 55 (A 41 + B 14)
+  → client.js check: OK (in sync with src/, 742591 chars, 55 tokens)
+```
+
+### 63.7 坑
+
+- **`src/client.js` 里不能出现反引号**。`tools/build-client.mjs:327` 直接
+  `throw new Error('src/client.js must stay free of backticks and template placeholders')`。
+  第一版注释里为了好看把 `<span>` 和 `gap` 用反引号包了，构建当场失败。改用普通引号或直接裸写。
+- **单引号会把 `row's` 打断**。门禁那两条本来是单引号字符串，`row's own child` 里的撇号提前收尾，
+  `node --check` 报语法错。两条一起改成双引号串。
+- **CRLF 各自不同**：`docs/design.md` 是纯 LF（546 行 0 个 CRLF），`docs/render-report.md` 是 CRLF
+  （4004 行 4004 个 CRLF）。两处都走「整文件读 → 改 → 用原分隔符写回」，写完当场核计数。
+- **预览 profile 必须是装主题的那个**。19388 那个 `web` profile 不装主题，看不到置顶按钮，
+  拿它测会得出「按钮不存在」的假结论。要测就用 `-Profile eva-preview -Port 19390`。
+
+## 64. 第六十六轮：导航区顶到顶栏带下沿，与 main 区标签行同轴（D100）（2026-10-20 追加）
+
+用户 2026-10-20 逐字：「定位导航区与 main 区标签行的盒模型并测量两者垂直基线。仅调整导航区与
+顶栏之间的垂直间距，使第一个导航按钮与 main 区「对话」「轨迹」所在行对齐。保持顶栏三个图标
+按钮之间的水平间距不变。」
+
+### 64.1 一句话结论
+
+差的是**中心线 58.125px**（`y` 差 52.625px）。要把它抹平必须让 `nav` 变成侧栏根容器的**流内第一个
+孩子**（`y 40`），而 D45 把「设置」行定在 `order: 1` 占着这一格 —— 所以本轮是「`order` 换位 + 抵消
+自身 `padding-top` 的 `-6px`」两件事一起做，不是单改一个 `margin`。设置行因此从导航上方挪到导航
+正下方，这是唯一的可见重排。
+
+### 64.2 先证明标签行存在（这一步才是本轮的难点）
+
+空白 / hero 会话页**根本没有** `[data-conversation-tabs]`：宿主里 `showTabs = !hideChrome && tabs.length > 1`，
+只有真实会话才渲染那个 `div[role=tablist][data-conversation-tabs]`。侧栏的会话行也不是 `button`／`a`，
+是 `DIV._9lTDKa_list[role=tree]` 里的 `SPAN` 标题。打开它的办法是对「文本以会话标题开头、高度在
+8–60 之间」的最深元素派发 `mousedown` + `mouseup` + `click` 三件套。不打开会话，量到的
+`[data-slot='main']` 是 `0×0`（它的孩子 `div[data-slot='main.conversation']` 是 `display: contents`）。
+
+### 64.3 盒模型与基线（1600×1000、侧栏 280、深色、桌面壳）
+
+| 对象 | 改前 | 改后 | 说明 |
+| --- | --- | --- | --- |
+| `[data-conversation-tabs]` | `y 45.375 / h 25 / 中心 57.875` | 同左（未动） | `fixed` 会话头 `top: -4.625` + 行内 `50px` |
+| `nav`（导航区） | `x 12 / y 98 / w 256 / h 36 / 中心 116` | `x 12 / **y 40** / w 256 / h 36 / 中心 **58**` | 水平零变化 |
+| 首枚导航按钮 | `x 14 / y 98 / w 252 / h 36 / 中心 116` | `x 14 / **y 40** / w 252 / h 36 / 中心 **58**` | `nav` 的 `margin: 0 2px` |
+| 中心差 | **+58.125** | **+0.125** | `y` 差 −5.375（`nav` 顶部在标签行上方） |
+| `settingsArea`（设置行） | `y 46 / h 52 / 中心 72` | `y 84 / h 52 / 中心 110` | 从导航上方挪到正下方 |
+| `regionArea`（工作区/会话） | `y 142 / h 852` | `y 136 / h 858` | 吃掉设置行让出的 6px，仍 `flex: 1` |
+| 顶栏 更多操作 | `[1384, 6.375, 28, 28]` | 同左 | 未动 |
+| 顶栏 打开右侧边栏 | `[1420, 6.375, 28, 28]` | 同左 | 未动，水平间距 36px 不变 |
+
+**0.125px 不再追**：那是 D80 基线的既有残差（基线取 `20.50`，实测图标中心 `20.375`），标签行自身就
+落在这条线的 ±0.125 上；再往上追会把右侧已经对齐的图标带偏。
+
+### 64.4 为什么「只改间距」做不到（本轮的偏差，写在这里）
+
+顶栏带下沿 `40` + 侧栏根容器 `padding-top: 6` = 内容区顶点 `46`。导航中心要落在 `57.875`，它的 `y`
+就得是 `40` —— 只有当它是**流内第一个孩子**时才可能。D45 的 `order: 1`（设置行）整格占住 `46→98`。
+实测「只加 `margin-top: -6px`、不动 `order`」：`nav` 落到 `y 92 / 中心 110`，仍差 **+52.125**，且与设置行
+`46→98` **重叠**（截图 `collide-spacingonly.png` 一眼可见）。所以 `order` 换位是必需的，不是顺手改的。
+
+### 64.5 改到的文件
+
+`src/theme.css` 一处：D45 那块之后新增一段（D45 原有四条 `order` 规则**逐字保留**，新规则只在桌面壳
+覆盖它）。注释块按本表习惯记「用户原话 / 真机读数 / 为什么必须动 order / 三种粒度的回滚」。
+
+```css
+html[data-windows-titlebar] [data-slot='sidebar'] > div > nav {
+  order: 1;
+  margin-top: -6px;      /* 抵消侧栏根容器的 padding-top: 6px */
+}
+html[data-windows-titlebar] [data-slot='sidebar'] > div > nav + div ~ div > :nth-child(2) {
+  order: 2;              /* 设置行 → 导航正下方 */
+}
+```
+
+选择器全部由 `[data-windows-titlebar]` + `[data-slot='sidebar']` 契约属性与标签／兄弟关系组成：
+命中 `css.7`（含 `[data-`）、不碰哈希类名（`css.6`）、不引入颜色（`css.8`）。
+
+### 64.6 验证方式（可复现）
+
+1. `npm run build` → `client.js` 742780 chars / 756715 bytes、boot mark `eva-boot/3955a47d`。
+2. `npm run verify` → 退出码 0：selfcheck **125 assertions, 0 failed**、token audit **55/55**、
+   `client.js check: OK`（`cli.13` 比对 `client.js` 内嵌 CSS 与 `src/theme.css`）。
+3. 真机（`-Profile eva-preview -Port 19390`，探针 `C:\Work\scratch\probe-shipped.py`，**不注入任何样式**、
+   读的就是仓库里的 `client.js`）：深色 / 浅色 × 侧栏 280 / 240 / 220 全部 `deltaMid = 0.125`、
+   `hitNav.inside = True`、`hitSettings.inside = True`、`horizOverflow = False`；125% 缩放 `deltaMid = -0.031`。
+
+### 64.7 坑
+
+- **别在 hero 页找标签行**：会得到「不存在」的错误结论。要先打开一个真实会话。
+- **不要覆盖 frame 的 `gridTemplateColumns` 来量侧栏宽度**：那样主区宽度会变 0（`main` 量出 `0×0`），
+  看起来像「标签行没了」。只需设 `--dsh-windows-sidebar-width`。
+- **`margin-top: -6px` 和 `order: 1` 必须成对**：单给 `margin-top` 会与设置行重叠；单给 `order` 则
+  `nav` 停在内容区顶点 `46`、中心 `64`（差 +6.125）。
+- **回滚三种粒度**：删 `margin-top` → 差回 +6.125；删整块两条 → 回 D45 原样、差回 +58.125；
+  删选择器前缀 → Web 壳也照此排列。
+
+## 65. 第六十七轮：启用 DeepSeek 账号时收起导航区账号卡（D101）（2026-10-20 追加）
+
+### 65.1 改的是什么
+
+只改两处产物 + 一条新门禁：账号卡（`ui-settings-account` 注册进 `settings.launcher` 槽的那棵
+Menu）在**启用账号时**整枝不参与布局、那一行也不留垂直空白；SYSTEM 第三区在账号卡场景下
+仍能开出设置。
+
+### 65.2 为什么 D62 / D68 的两条规则在这件事上不起作用
+
+`ui-settings-account` 是 `settings.launcher` 这个 **single 槽**的唯一注册者，注册即替换官方
+回退按钮。真实层级（`app.asar` → `dsh-client-ui-settings-account/lib/client.js:4768`）：
+
+```
+div[data-slot='sidebar.settings']          display:contents
+  div.wCInkW_triggerRow                    margin:4px -2px / 窄轨 8px 0 10px
+    div[data-slot='settings.launcher']     display:contents
+      div                                  账号卡根 flex:1
+        span                               Menu 根 width:100%
+          button[aria-haspopup='menu']     触发器 44px / 窄轨 36px
+```
+
+D62 / D68 写的是 `[data-slot='settings.launcher'] > button` —— 账号卡不是槽的直接子级 button，
+所以这两条在该场景**命中 0 个节点**。官方回退按钮才是直接子级，且它写死
+`aria-haspopup="dialog"`，与账号卡的 `menu` 先天互斥。
+
+### 65.3 两条规则
+
+```css
+/* ① 藏账号卡：认「槽里有没有菜单触发器」 */
+[data-slot='sidebar'] [data-slot='settings.launcher']:has(button[aria-haspopup='menu']) {
+  display: none !important;
+}
+/* ② 收掉残留的空格：只收垂直外边距，行宽与缩进不动 */
+[data-slot='sidebar'] div:has(> [data-slot='settings.launcher'] button[aria-haspopup='menu']) {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+```
+
+- ① 的判据必须同时满足「是账号卡」与「不是官方回退按钮」：`aria-haspopup` 的 `menu` / `dialog`
+  正好是这两个形态的互斥标记。`data-collapsed` 不能用（`dsh-client-ui-trajectory` 的窄轨也在
+  写它），`data-signed-out` 也不能用（只描述登录态）。
+- ② 选择器里的 `>` 保证只命中「把 launcher 槽**直接**装进来的那一行」：`triggerRow` 藏净后
+  只剩上下外边距、没有内容，会留 4px（窄轨 8px + 10px）空白。
+
+### 65.4 SYSTEM 那半为什么是代码
+
+`src/client.js` 的 `LAUNCHER = "[data-slot='settings.launcher'] > button"` 在账号卡场景返回
+`null`，第三区于是走 `pressSettingsShortcut()` 兜底；账号卡一藏，这就是**唯一剩下的**设置入口。
+
+**第一版是错的，重启后当场暴露**：先按运行时挑和弦（用宿主 `detectEnvironment` 读
+`document.documentElement.dataset.platform`，`@deepseek-ai/dsh-client-shortcuts/lib/client.js:1342-1349`），
+派发合成 `keydown`。在 Web 实例里验过、是通的，但**桌面壳里是死点击**——`ShortcutsService`
+构造时 `runtime === 'desktop'` 就走 `installKeyboard(window, registry, fixed, native=true)`，
+其 keydown 处理器在 `client.js:790-813` 组装完 gesture 后有一句 `if (native) return`，绑定只从
+原生桥（`window.dshDesktop.keyboard`）解析，DOM 上合成的按键被直接丢弃。
+
+终版改成问命令注册表，不走键盘：
+
+```js
+var pressSettingsShortcut = function () {
+  var service = ctx.get('shortcuts')
+  var registry = service === null || service === undefined ? undefined : service.registry
+  if (registry !== undefined && registry !== null && typeof registry.invoke === 'function') {
+    var modal = modalScopeOf()          /* 栈顶 [role="dialog"][aria-modal], [role="menu"] 的 data-shortcut-modal */
+    if (modal === null || modal === 'settings') {
+      try {
+        registry.invoke('settings.open', { target: focus, region: editable ? 'editable' : 'page', modal: modal, source: 'menu' })
+        return
+      } catch (error) { /* 落到下面的和弦 */ }
+    }
+  }
+  /* 服务缺席时的第二道门：合成 keydown，按运行时选和弦 */
+  var desktop = document.documentElement.dataset.platform !== undefined
+  document.dispatchEvent(new KeyboardEvent('keydown', {
+    key: ',', code: 'Comma', ctrlKey: true, altKey: !desktop, bubbles: true, cancelable: true,
+  }))
+}
+```
+
+`registry.invoke(id, context)` 是 `ShortcutRegistry` 给原生菜单用的同一个门
+（`dsh-client-shortcuts/lib/client.js:644`）：`resolve()` 返回 `handled` 就 `run()`。上下文只喂它读的
+两件事 —— `modal` 与 `region`。`modal === 'settings'` 时同一命令负责关闭，所以再点一次是收起面板。
+
+坑在 API 形状：`invoke()` 挂在 `service.registry` 上，**不在** `ShortcutsService` 自身上；第一版写成
+`service.invoke` 判断恒假、静默落到和弦兜底，Web 里看不出问题、桌面里依旧是死点击。
+
+### 65.5 真机读数（Playwright 直连，不是 fixture）
+
+实例用**镜像 profile**（`cordis.patch.yml` 与 desktop 逐字相同、`node_modules` 用 junction 指向
+desktop 那份，`ui-settings-account` 已 `disabled: false`）；探针 `C:\Work\scratch\eva-acct-test\live-desktop.py`。
+
+| 场景 | `slotDisplay` | `triggerRow` | 规则命中 | SYSTEM |
+| --- | --- | --- | --- | --- |
+| 账号启用 | `none` | `h=0`、`margin 0px 0px` | hide=true / gap=true | 点第三区 → `role="dialog"` 宽 800、正文含「通用」，**拦截到的 keydown 为空** |
+| 账号启用，再点一次 | `none` | 同上 | 同上 | 面板关闭（`settings.open` 的 `modal === 'settings'` 支路） |
+| 账号未启用 | `contents` | `h=0`、`margin 4px 4px`（窄轨 `8px 10px`） | hide=**false** / gap=**false** | 点第三区 → 回退按钮 `aria-haspopup="dialog"` 命中，开出设置 |
+
+「拦截到的 keydown 为空」是这一轮的关键证据：页面里装了 capture 阶段的
+`document.addEventListener('keydown', …)` 记录器，点击后数组为空，说明确实是
+`registry.invoke('settings.open')` 处理了这次点击，而不是落到合成按键的兜底分支。
+
+未启用账号时槽里是 `aria-haspopup="dialog"` 的回退按钮，新规则一条都不命中，D68 原样接管。
+
+### 65.6 验证方式（可复现）
+
+1. `npm run verify` → 退出码 0：selfcheck **126 assertions, 0 failed**、token audit **55/55**、
+   `client.js check: OK`。
+2. 账号启用场景：`display:none` + `triggerRow` 高度 0 / 垂直 margin 0，导航区上方不多出一条空行。
+3. 账号未启用场景（同 profile 不加 `--patch`）：两条新规则 `matches()` 均为 false，`triggerRow`
+   仍是 `4px 4px`，SYSTEM 照旧。
+4. SYSTEM：点品牌行第三区（name 右缘之后 6px），设置面板以 800px `role="dialog"` 出现，
+   且页面内 keydown 记录器为空（证明走的是注册表，不是合成按键）；再点一次面板关闭。
+5. 桌面壳专项：`native=true` 时合成 keydown 一定失效（`client.js:813` 的 `if (native) return`），
+   所以这条路径不能用「Web 里点得开」当验收——README 的 65.4 记了这次踩坑。
+
+### 65.7 坑
+
+- **不要拿 `data-collapsed` 当判据**：`dsh-client-ui-trajectory` 的窄轨也在写这个属性。
+- **别只藏 button**：`triggerRow` 的 `margin:4px -2px`（窄轨 `8px 0 10px`）会留下垂直空白，
+  必须一并归零。
+- **`src/client.js` 里禁反引号与 `${`**：构建把它整份插进模板字符串。
+- **`display:none` 不挡合成 `.click()`**：未启用账号时第三区照样能 `hidden.click()` 命中回退按钮。
+- **`invoke()` 在 `service.registry` 上，不在 `ShortcutsService` 自身**：写成 `service.invoke` 时
+  判断恒假，会静默落进和弦兜底 —— 而桌面壳里和弦兜底是死的，于是「代码改了、看起来没改」。
+- **桌面壳不能拿 Web 实例验收键盘路径**：`native=true` 那句 `if (native) return`（`client.js:813`）
+  让合成 keydown 一律作废。凡是「靠派发按键触发宿主命令」的写法，必须在 `runtime === 'desktop'`
+  下另找入口，或者直接调注册表。

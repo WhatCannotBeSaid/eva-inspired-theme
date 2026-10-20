@@ -1022,9 +1022,12 @@ body[data-eva-motion='reduced'] [data-row-key^='session:'][aria-selected] {
   position: relative;
   top: -1px;
   background-image: var(--cp-brand-mark);
-  background-size: contain;
+  /* Keep the 36px layout/click box so the text does not move. The supplied square
+     SVG has transparent space above its subject: a 28px canvas aligned to the top
+     gives roughly 21px of visible artwork beside the 16px wordmark. Preserve ratio. */
+  background-size: 28px auto;
   background-repeat: no-repeat;
-  background-position: center;
+  background-position: center top;
 }
 [data-slot='sidebar.brand.mark'] > svg {
   display: none;
@@ -1580,6 +1583,57 @@ html[data-windows-titlebar] body:not([data-ds-dark-theme]) {
 }
 
 /* --------------------------------------------------------------------------
+ * 导航区顶到顶栏带下沿：首枚导航按钮的中心与 main 区「对话 / 轨迹」标签行同轴
+ * （2026-10-20，第六十六轮，D100）
+ *
+ * 用户逐字：「定位导航区与 main 区标签行的盒模型并测量两者垂直基线。仅调整导航区
+ * 与顶栏之间的垂直间距，使第一个导航按钮与 main 区「对话」「轨迹」所在行对齐。
+ * 保持顶栏三个图标按钮之间的水平间距不变。」
+ *
+ * 真机读数（1600×1000、侧栏 280、深色、桌面壳、已打开一个真实会话）：
+ *   标签行 `[data-conversation-tabs]`      y 45.375 / 高 25 / 中心 **57.875**
+ *   导航区 `nav`（改前）                    y 98     / 高 36 / 中心 **116**
+ *   首枚导航按钮 `nav > button`（改前）      y 98     / 高 36 / 中心 **116**
+ *   ⇒ 改前中心差 **+58.125px**（导航比标签行低 58.125）
+ *
+ * 为什么必须同时改 `order`（这与「只改垂直间距」的字面要求不同，故写明）：
+ *   顶栏带下沿是 40，侧栏根容器 `padding-top` 是 6，内容区顶点即 46。导航中心要落在
+ *   57.875 就得 y = 40（高 36）—— 也就是「流内第一个孩子」那一格。而 D45 把「设置」
+ *   行定在 `order: 1`（46→98、高 52），整格占住了这一位置。只给 `nav` 加 `margin-top`
+ *   实测撞车：`nav` 落到 y 92、中心 110（仍差 **+52.125**），且与「设置」行 46→98 重叠。
+ *   故本轮在桌面壳里把两者换位：导航 `order: 1`、「设置」行 `order: 2` —— 设置行从
+ *   导航上方挪到导航正下方，这是本轮唯一的可见重排，不是纯间距微调。
+ *
+ * 为什么只在 `html[data-windows-titlebar]` 下生效：标签行落进 40px 顶栏带这件事本身
+ * 只发生在桌面壳（承 2026-10-08「会话头抬进顶栏带」那条）；Web 壳没有这条带，对齐
+ * 目标不存在，所以 Web 壳一字不动、D45 的「设置在导航上方」原样保留。
+ *
+ * `margin-top: -6px` 是抵消侧栏根容器自己的 `padding-top: 6px`（同一数值，不是凑像素
+ * 硬调的魔数），与表内会话头 `top: -4.625px`、dockkit 条 `top: -4.5px` 同一手法。
+ *
+ * 实测（改后，同一环境）：
+ *   导航区 / 首枚按钮   y 40 / 高 36 / 中心 **58**  ⇒ 与标签行中心差 **+0.125px**
+ *   设置行              46→98 变成 **84→136**（中心 72→110），仍在同一栏内
+ *   工作区 / 会话列表   142→**136**（高 852→**858**，吃掉设置行让出的 6px）
+ *   水平方向：`nav` 仍 x 12 / 宽 256，横竖零变化；无横向溢出（scrollW 280 = clientW 280）
+ *   顶栏图标：更多操作 [1384, 6.375, 28, 28]、打开右侧边栏 [1420, 6.375, 28, 28] —— 未动
+ *   125% 缩放：中心差 **−0.031px**；浅色档与深色档逐像素一致
+ *   0.125px 是全表既有残差（D80 基线取 20.50，实测图标中心 20.375），不再追。
+ *
+ * 回滚（三种粒度，任取一种即可回到改前）：
+ *   ① 只回中心差：删 `margin-top: -6px` 一行 —— 导航回到 y 46、中心 64（差 +6.125）。
+ *   ② 回排列：删掉本块两条规则 —— 回到 D45 的「设置 1 / 导航 2」，中心差回到 +58.125。
+ *   ③ 想让 Web 壳也照此排列：删掉两条选择器的前缀 `html[data-windows-titlebar] `。
+ * ------------------------------------------------------------------------ */
+html[data-windows-titlebar] [data-slot='sidebar'] > div > nav {
+  order: 1;
+  margin-top: -6px;
+}
+html[data-windows-titlebar] [data-slot='sidebar'] > div > nav + div ~ div > :nth-child(2) {
+  order: 2;
+}
+
+/* --------------------------------------------------------------------------
  * 「设置」行与导航页按钮左对齐（2026-10-07，第二十三轮，D62）
  *
  * 用户要求：「设置」按钮与导航页按钮位置不一致 —— 以导航页按钮的位置为基准调整
@@ -1644,6 +1698,53 @@ html[data-windows-titlebar] body:not([data-ds-dark-theme]) {
 [data-slot='sidebar'] > div > nav[aria-label] > button:has([data-slot='sidebar.panellist'])[aria-label='插件'],
 [data-slot='sidebar'] > div > nav[aria-label] > button:has([data-slot='sidebar.panellist'])[aria-label='Plugins'] {
   display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+ * 启用 DeepSeek 账号时，导航区的账号卡整枝收起（2026-10-20，第六十四轮，D101）
+ *
+ * 用户逐字：「在启用 DeepSeek 账号时隐藏导航区账号卡，且不占位、不留空白。」
+ * 「保留「SYSTEM」设置入口的原有渲染与功能。」
+ *
+ * 宿主真身（app.asar → @deepseek-ai/dsh-client-ui-settings-account/lib/client.js）：
+ * 该包 `ctx.slots.inject("settings.launcher", …)` 注册进 `settings.launcher` 这个
+ * single 槽，启用时**替换**掉官方回退的设置按钮。所以槽里长出来的是一棵账号卡，
+ * 不是按钮本身：
+ *
+ *   div[data-slot='sidebar.settings']            （display:contents 的槽锚）
+ *     div.triggerRow                              margin: 4px -2px / rail：8px 0 10px
+ *       div[data-slot='settings.launcher']        （display:contents 的槽锚）
+ *         div                                  账号卡根（flex:1; min-width:0）
+ *           span                               Menu 根（width:100%）
+ *             button[aria-haspopup='menu']     触发器（高 44px / 窄轨 36px）
+ *       连接状态指示 / 桌面更新指示（同行的另两枚，与本规则无关）
+ *
+ * 两条规则分别处理「藏」与「空」：
+ *   ① 藏账号卡：`:has(button[aria-haspopup='menu'])` 认的是**槽里有没有菜单触发器**。
+ *      官方回退按钮的 aria-haspopup 是 `dialog`（settings-general 的 JSX 写死），与
+ *      `menu` 互斥，所以这里不会误伤回退设置按钮 —— 未启用账号时这条规则一条都不命中，
+ *      该按钮仍归上面 D68 那条 `> button` 管，行为逐字节不变。也不用 `data-collapsed`
+ *      （trajectory 包也在用）或 `data-signed-out`（只描述登录态，不描述「是不是账号卡」）。
+ *      `display:none` 压过槽锚自己的 `display:contents`，账号卡整枝不再参与布局。
+ *   ② 收掉残留的空格：`triggerRow` 自带 `margin: 4px -2px`（窄轨 `8px 0 10px`），
+ *      账号卡藏净后这一行只剩上下外边距、没有内容，会留下 8px（窄轨 18px）垂直空白。
+ *      只收**垂直**外边距、横向下边距留着，行宽与缩进不变。选择器用 `:has(> …)` 认
+ *      同一个触发器，`>` 保证只命中「把 launcher 槽直接装进来的那一行」，不会牵连
+ *      设置面板里别的 div。
+ *
+ * 作用域：只在 `[data-slot='sidebar']` 内、只在这个槽、只在这一行。nav 的排列、工作区、
+ * 会话列表、连接指示与更新指示一个字节没动；其他账号形态（未启用账号插件、Web 壳、
+ * 收起态 rail）走的是各自原有规则。
+ *
+ * 回滚两种粒度：① 删 ① 号规则 → 账号卡重新出现且照旧占位；② 两条一起删 → 回到 D68
+ * 记录的旧世界（账号卡在导航区里露着、SYSTEM 第三区在桌面壳里点不动）。
+ * ------------------------------------------------------------------------ */
+[data-slot='sidebar'] [data-slot='settings.launcher']:has(button[aria-haspopup='menu']) {
+  display: none !important;
+}
+[data-slot='sidebar'] div:has(> [data-slot='settings.launcher'] button[aria-haspopup='menu']) {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 /* --------------------------------------------------------------------------
@@ -2067,5 +2168,31 @@ body [data-composer-placeholder] {
      .groupSection + .groupSection 照旧按 DOM 兄弟序收它 4px；那 4px 是给「它下面还有一组」
      留的缝，而现在下面没有了，所以收掉。 */
   margin-top: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * 访问模式（权限）触发器右侧那枚 ⌄（2026-10-20，用户点名）
+ *
+ * 用户原话：「另外去掉「权限」旁的「v」形标识。」
+ *
+ * 这个控件不是本主题的，是 dsh 官方的权限选择器：槽位
+ * `[data-slot='conversation.input.permission']` 里是一枚 button（`.dlU_AG_trigger`），
+ * 内部依次是图标 span、文字 span、以及一枚 `span.dlU_AG_chevron`（14×14，颜色
+ * `label-tertiary`）。它是 CSS Modules 的哈希类名，逐版本会变，所以这里按**槽位属性**
+ * 定位（本表 2026-10-08 的 `span[class*='fade']` 用的是同一套做法），不写死哈希。
+ *
+ * 只藏箭头、不动文字与图标：这个按钮开着时同样没有底色可替代（官方那枚触发器点开是
+ * 一个 listbox 弹层，触发器自身不变色），但它的**文字**本身就是状态（「工作区内修改」
+ * 会随档位改名），箭头只是重复「这里能点」。所以撤箭头不损失信息。
+ *
+ * 连带把右内边距补齐：官方给触发器的 `padding: 0 4px 0 8px` 右少左多，那 4px 是留给
+ * 箭头与 4px gap 的；箭头没了之后右 4px / 左 8px 会让文字偏左。改成两侧 8px。
+ * ------------------------------------------------------------------------ */
+[data-slot='conversation.input.permission'] span[class*='chevron'] {
+  display: none;
+}
+
+[data-slot='conversation.input.permission'] button[class*='trigger'] {
+  padding-right: 8px;
 }
 

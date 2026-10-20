@@ -2,10 +2,19 @@
  *
  * The composer's merged model control becomes TWO buttons, each with its OWN popover:
  *
- *   [ DeepSeek V4.1 Flash  ^ ]      [ 大脑图标  高  v ]
+ *   [ DeepSeek V4.1 Flash ]         [ 大脑图标  高 ]
  *            |                              |
  *      model panel                    effort panel
  *      (search + groups + models)      (Default / 低 / 中 / 高)
+ *
+ * Both triggers are glyph-or-word: a short composer row shows the database glyph and
+ * the brain, a roomy one shows the model's name and the effort's name. The switch is
+ * the composer's own compact contract, so the two buttons never disagree about which
+ * state the row is in (2026-10-19).
+ *
+ * Neither trigger carries a disclosure chevron (2026-10-19): the open state is shown
+ * by the trigger's own highlight, so the row stays two labels wide instead of two
+ * labels plus two arrows.
  *
  * Nothing is shared between them but the store they read and the selection verb they
  * call -- opening one closes the other, and neither can reach into the other's list.
@@ -258,11 +267,12 @@ var EvaModelEffortPicker = (function () {
 
     var label = h('span', 'eva-mep-triggerLabel')
     var value = h('span', 'eva-mep-triggerValue')
-    /* The reasoning axis names itself with a glyph, so its label is an SVG rather than
-     * text. Both triggers share one shell, so the glyph is swapped in here by kind
-     * instead of duplicating the builder. It carries no accessible text of its own --
-     * icon() already marks it aria-hidden, and the trigger's aria-label spells the
-     * axis out (see effort.trigger.aria). */
+    /* Both axes are glyph-or-word, decided by the composer's compact contract (the
+     * two --dsh-composer-model-*-display variables the stylesheet reads): the glyph in
+     * a short row, the name in a roomy one. This half is the effort axis, so its label
+     * box holds the brain rather than text. It carries no accessible text of its own --
+     * icon() already marks it aria-hidden, and the trigger's aria-label spells the axis
+     * out (see effort.trigger.aria). */
     if (kind === 'effort') label.appendChild(icon(PATH_BRAIN, 'eva-mep-triggerGlyph'))
     /* The model axis mark is a SIBLING of the label, never a child of it. paint() names
      * the model by assigning label.textContent, and assigning textContent discards
@@ -272,7 +282,11 @@ var EvaModelEffortPicker = (function () {
     if (kind === 'model') trigger.appendChild(icon(PATH_MODEL, 'eva-mep-triggerAxis'))
     trigger.appendChild(label)
     trigger.appendChild(value)
-    trigger.appendChild(icon(PATH_CHEVRON, 'eva-mep-chev'))
+    /* No disclosure chevron on the trigger (2026-10-19). The open state is already
+     * visible from the trigger's own background and ink -- see the [data-eva-mep-open]
+     * rule in the stylesheet -- so the arrow only added a third right-edge mark beside
+     * the value. PATH_CHEVRON stays: the provider group rows in the panel still use it
+     * for their collapse affordance, which has no highlight to replace it. */
 
     var pop = h('div', 'eva-mep-pop')
     pop.setAttribute('data-eva-mep-pop', '')

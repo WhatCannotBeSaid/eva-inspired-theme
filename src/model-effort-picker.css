@@ -23,15 +23,51 @@
   min-width: 0;
 }
 
-/* The seat's row: the two controls sit side by side with the composer's own gap, and
- * each keeps its own min-width:0 so a long model name ellipsises instead of pushing
- * the effort button off the row. Keyed on an attribute rather than a class so the
- * rule would also satisfy the paint layer's selector contract if it ever moved there. */
+/* The seat's row. The seam between the two triggers is not set here -- the whole control
+ * row shares one rhythm, see the block below -- but the seat still has to be a flex line
+ * of its own so a long model name ellipsises against the effort button instead of pushing
+ * it around. */
 [data-eva-mep-seat] {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
   min-width: 0;
+}
+
+/* ------------------------------------------------- one rhythm for the whole row -- */
+
+/* Every control in the composer's input row stands on the same seam: 6px when the row is
+ * roomy, 3px when it is narrow. Four of them were previously spaced by whatever their own
+ * group happened to declare (the trailing group said 12px, and this seat said 2px), which
+ * is what made the row read as "pairs" rather than one line of buttons.
+ *
+ * Only `column-gap` is tightened; `row-gap` is restated at the value each of these
+ * containers already had (12px, and 8px in the narrow state). The wrapping one is the row
+ * itself, where row-gap is the vertical space between its two lines -- if the shorthand
+ * were rewritten as a bare `gap`, that line spacing would collapse along with the button
+ * seams. Restating it on the non-wrapping groups costs nothing: it is inert there.
+ *
+ * The wrapping container is the row itself, and it matches this selector too. That is
+ * harmless: against the row, `tools` and `trailing` are pushed to opposite ends by
+ * `justify-content: space-between` plus `margin-left: auto`, so its column-gap is absorbed
+ * by the free space and never shows as a seam between two buttons, while its row-gap is
+ * restated unchanged below. All four buttons live inside `trailing` on a single line, so
+ * the seams that actually matter are the ones on `trailing` and `standardControls`.
+ *
+ * The 3px step keys on the row's own container query rather than on
+ * `[data-model-compact]`: the row's width is what actually changes, and a compact row can
+ * also happen while the row is still wide (a long model name), which must not tighten it. */
+[data-composer-card] [data-eva-mep-seat],
+[data-composer-card] div:has([data-slot^='conversation.input']):not([data-composer-card]) {
+  column-gap: 6px;
+  row-gap: 12px;
+}
+
+@container (width <= 560px) {
+  [data-composer-card] [data-eva-mep-seat],
+  [data-composer-card] div:has([data-slot^='conversation.input']):not([data-composer-card]) {
+    column-gap: 3px;
+    row-gap: 8px;
+  }
 }
 
 /* -------------------------------------------------------------------- trigger -- */
@@ -124,20 +160,45 @@
  * Its width is content, never a share of the row: when the model name beside it is
  * long, the model trigger is the one that gives ground.
  *
- * The label box holds an SVG rather than type, so it is flexed to centre the glyph on
- * the value's baseline. The glyph is a stroked outline in currentColor, which is what
- * keeps it monochrome and lets it follow the theme's ink in both modes -- an emoji
- * would carry its own baked-in colour and read as a foreign sticker. Its stroke is a
- * touch heavier than the 1px family default because at this size a 1px hairline in a
- * dense composer greys out; 1.4px is what the panel's other icons here already use. */
+ * The label box holds an SVG rather than type. The glyph is a stroked outline in
+ * currentColor, which is what keeps it monochrome and lets it follow the theme's ink in
+ * both modes -- an emoji would carry its own baked-in colour and read as a foreign
+ * sticker. Its stroke is a touch heavier than the 1px family default because at this
+ * size a 1px hairline in a dense composer greys out; 1.4px is what the panel's other
+ * icons here already use.
+ *
+ * WHICH HALF SHOWS IS THE COMPOSER'S CALL, NOT THIS SHEET'S (2026-10-19). Both triggers
+ * now answer the same compact contract the official seat publishes: a glyph-only button
+ * while the row is short of room, a text button when it has room.
+ *
+ *   compact  model: database glyph          effort: brain glyph
+ *   wide     model: the model's name        effort: the effort's name ("高")
+ *
+ * So the brain is display-toggled by --dsh-composer-model-icon-display (its default is
+ * none), exactly like .eva-mep-triggerAxis on the model side, and the value beside it is
+ * toggled by --dsh-composer-model-text-display below, exactly like the model's label.
+ * The two halves stay mirrors of each other: whatever state the row is in, both buttons
+ * are in it together, and neither mixes a glyph with a word.
+ *
+ * The label box had to stop being unconditionally inline-flex to do that: an empty
+ * inline-flex box still owns its share of the trigger's 4px gap, which would leave the
+ * word "高" sitting 4px further from the left edge than the model name beside it. With
+ * display:none the box is gone and the two triggers keep one inset.
+ *
+ * No ink of its own since 2026-10-20. While the glyph was a decoration beside a word it
+ * was painted label-dimmed, but in compact mode it IS the button's whole label, and the
+ * dimmed token made the effort button read as disabled next to the model glyph and the
+ * dictation mic (both of which take the trigger's label-secondary). Inheriting is also
+ * what keeps hover and open states consistent across all three: the [data-eva-mep-open]
+ * rule lifts the trigger's colour and this follows it without a second selector. */
 [data-eva-mep][data-eva-mep-kind='effort'] .eva-mep-triggerLabel {
-  display: inline-flex;
-  align-items: center;
+  display: var(--dsh-composer-model-icon-display, none);
   color: var(--dsw-alias-label-dimmed);
 }
 
 [data-eva-mep] .eva-mep-triggerGlyph {
   flex: 0 0 auto;
+  display: block;
   width: 14px;
   height: 14px;
 }
@@ -180,8 +241,8 @@
 }
 
 /* The model axis mark is hidden whenever the name is shown, so it never competes with
- * it; the effort half keeps its brain at all times -- that glyph IS the axis label, and
- * the value beside it is the part with a compact form. */
+ * it. The effort half follows the same switch since 2026-10-19 -- see the compact note
+ * above its label rule -- so both triggers are glyph-only together or text together. */
 [data-eva-mep] .eva-mep-triggerAxis {
   flex: 0 0 auto;
   width: 14px;
@@ -197,17 +258,63 @@
   display: var(--dsh-composer-model-text-display, block);
 }
 
-[data-eva-mep] .eva-mep-chev {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  color: var(--dsw-alias-label-dimmed);
-  transition: transform var(--ds-transition-duration) var(--ds-ease-in-out);
+/* The triggers no longer carry a disclosure chevron (2026-10-19). The open state was
+ * already carried by the trigger's own background and ink -- see the
+ * [data-eva-mep-open='true'] rule above -- so the arrow was a third right-edge mark
+ * that the value now owns alone. `.eva-mep__chev` in the panel is a different element
+ * and stays: a provider group row has no highlight to show its collapsed state. */
+
+/* ------------------------------------------------------- compact seat: squares -- */
+
+/* In the compact row the two triggers stop being worded controls and become two more icon
+ * buttons beside the add button and the dictation button, so they have to measure and
+ * weigh the same as those two. Nothing here may leak into the wide row: the wide row is
+ * still about a name and its effort, and the only reason this is a separate block is so
+ * the wide row keeps its own numbers untouched.
+ *
+ * `data-model-compact` on the composer row is the switch. It is the row's own attribute,
+ * set from the row's own measurement of whether its children fit, so it fires for a long
+ * model name or an open inspector as readily as for a narrow window -- exactly the
+ * condition under which the glyphs replace the words below. Keying on it (rather than on
+ * a media query, or on the two display variables) means these rules can only ever apply
+ * in the state that shows the glyphs. */
+
+/* 1. Size only. The seam between the two triggers is not set here: it is shared with the
+ * rest of the control row and lives in that block above (6px, 3px when narrow). Pinning a
+ * number here would fight it, and keying a seam on `data-model-compact` would tighten the
+ * pair on a row that is still wide -- a long model name -- while the step to the mic
+ * stayed at the roomy value. */
+
+/* 2. Same square. A comma/plus-sized icon button in this composer is 28x28: that is the
+ * add button's declared box and the dictation button's height. Without this the two
+ * triggers measure their own contents and land at 30px and 26px -- close enough to look
+ * wrong rather than obviously different -- so both are pinned to the square and the glyph
+ * is centred in it. Padding goes to zero because the width is now the whole budget; the
+ * wide row keeps its 6px inset for its words.
+ *
+ * The floor is written on the anchors rather than the triggers so it applies to whichever
+ * of the two is showing a glyph, and min-width (not width) so a trigger that still has a
+ * word in it -- a very short row, a value that has not collapsed -- is not clipped. */
+[data-model-compact] [data-eva-mep] .eva-mep-trigger {
+  justify-content: center;
+  min-width: 28px;
+  padding: 0;
 }
 
-/* Points down when closed, up while the panel is showing. */
-[data-eva-mep][data-eva-mep-open='true'] .eva-mep-chev {
-  transform: rotate(180deg);
+/* 3. Same ink. In the wide row both triggers are text, and text takes the label-secondary
+ * this sheet gives every trigger. In the compact row they are glyph buttons standing in a
+ * line with the add button and the dictation mic, and those two paint themselves
+ * label-primary -- so secondary ink here read as the tail of the group rather than a
+ * member of it. Primary is the row's icon ink; take it here and only here.
+ *
+ * The effort label's own dimmed colour is what made it the darkest of the three, so it
+ * inherits instead of naming a token: one rule, and hover/open lift it with the trigger. */
+[data-model-compact] [data-eva-mep] .eva-mep-trigger {
+  color: var(--dsw-alias-label-primary);
+}
+
+[data-model-compact] [data-eva-mep][data-eva-mep-kind='effort'] .eva-mep-triggerLabel {
+  color: inherit;
 }
 
 /* -------------------------------------------------------------------- popover -- */
@@ -592,7 +699,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   [data-eva-mep] .eva-mep-trigger,
-  [data-eva-mep] .eva-mep-chev,
   [data-eva-mep] .eva-mep__chev,
   [data-eva-mep] .eva-mep__option,
   [data-eva-mep] .eva-mep__groupRow,

@@ -680,15 +680,73 @@
            handler. */
         var PANEL_ROW = "[data-slot='sidebar'] > div > nav[aria-label] > button:has([data-slot='sidebar.panellist'])[aria-label='插件'], [data-slot='sidebar'] > div > nav[aria-label] > button:has([data-slot='sidebar.panellist'])[aria-label='Plugins']"
 
-        /* The settings command by its other door: the chord the launcher advertises
-           in the WEB runtime (Control+Alt+,; the desktop build binds the same command
-           to Ctrl+, -- dsh-client-shortcuts declares a map per receiving device, so
-           this synthesized event only matches where the web map is in force). Reached
-           only when the launcher button is absent from the DOM. */
+        /* The settings command by its other door. dsh-client-shortcuts declares a map
+           per receiving device and the two maps disagree on this one command: the
+           desktop build binds settings.open to Ctrl+, and the web build to Ctrl+Alt+,.
+           The host decides which map is in force exactly one way -- detectEnvironment
+           reads document.documentElement.dataset.platform and calls it desktop when
+           the attribute is there -- so the same test picks the chord here. Only ONE
+           event is dispatched: sending both would match twice, and the second match
+           lands with modal === 'settings', whose resolve() closes the panel it just
+           opened. Reached only when the launcher button is absent from the DOM.
+
+           Why absent covers the account card too (round 64, D101): when
+           ui-settings-account is enabled the slot holds a Menu trigger, not a button
+           -- the real chain is div[data-slot] > div > span > button -- so the direct-
+           child selector above matches nothing and this is the path that runs. That
+           is what keeps SYSTEM live while the sheet hides the card's subtree. */
+        /* Round 68 (2026-10-20): a synthesised keydown does NOT reach the command
+           registry on the desktop build. dsh-client-shortcuts installs the DOM
+           listener with native = true there (ShortcutsService: the keyboard bridge
+           exists whenever runtime is desktop), and its keydown handler returns
+           right after the fixed-input hook -- client.js:813, 'if (native) return'.
+           Bindings are resolved only from the native bridge in that build, so the
+           synthetic event was silently dropped and SYSTEM became a dead click as
+           soon as the account card pushed the button out of LAUNCHER. Web builds
+           keep native = false and still dispatch, which is why this reproduced only
+           after the account plugin was enabled on the desktop profile.
+           The fix is to ask the command registry directly instead of synthesising a
+           key press. ctx.shortcuts is the ShortcutsService; the invocable registry is
+           service.registry, and registry.invoke(id, context) is the same door the
+           native menu uses (dsh-client-shortcuts/lib/client.js:644). The context is
+           exactly the facts settings.open's resolve() reads -- the topmost modal and
+           the focused region -- probed from the live document with the host's own
+           modalSelector expression, so the command behaves as if chosen from the
+           menu: closed settings open, open settings close.
+           The chord below stays as the second door for a build without the service,
+           and is still the only thing that runs if invoke() throws. */
+        var modalScopeOf = function () {
+          var nodes = document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="menu"]')
+          if (nodes.length === 0) return null
+          var top = nodes[nodes.length - 1]
+          var scope = top.getAttribute('data-shortcut-modal')
+          return scope === null || scope === '' ? 'other' : scope
+        }
+
         var pressSettingsShortcut = function () {
+          var service = ctx.get('shortcuts')
+          var registry = service === null || service === undefined ? undefined : service.registry
+          if (registry !== undefined && registry !== null && typeof registry.invoke === 'function') {
+            var modal = modalScopeOf()
+            /* invoke() silently drops a command whose modals list excludes the
+               current modal, so a foreign dialog is left alone here rather than
+               looking like a click that did nothing. */
+            if (modal === null || modal === 'settings') {
+              var focus = document.activeElement
+              var editable = focus !== null && typeof focus.matches === 'function' &&
+                focus.matches('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
+              try {
+                registry.invoke('settings.open', {
+                  target: focus, region: editable ? 'editable' : 'page', modal: modal, source: 'menu',
+                })
+                return
+              } catch (error) { /* fall through to the chord below */ }
+            }
+          }
           if (typeof KeyboardEvent !== 'function') return
+          var desktop = document.documentElement.dataset.platform !== undefined
           document.dispatchEvent(new KeyboardEvent('keydown', {
-            key: ',', code: 'Comma', ctrlKey: true, altKey: true, bubbles: true, cancelable: true,
+            key: ',', code: 'Comma', ctrlKey: true, altKey: !desktop, bubbles: true, cancelable: true,
           }))
         }
 
@@ -993,10 +1051,25 @@
               button = create(id, on)
               /* The official rowActions is display:none until the row is hovered (or its
                  menu is open), so the pin inherits the row's own affordance instead of
-                 inventing a second one -- and going in FIRST leaves the two official
-                 buttons at exactly the pixels they already occupied. */
-              var anchor = row.querySelector('button')
-              var host = anchor !== null && anchor.parentElement !== null ? anchor.parentElement : row
+                 inventing a second one.
+
+                 Where it goes decides the SEAM, not just the affordance. The first
+                 official button is not a direct child of rowActions: it sits inside the
+                 menu's own span wrapper, and that wrapper is a flex box with no gap
+                 of its own. A pin dropped inside that wrapper lands flush against the
+                 menu button -- measured on the live app: pin 197-213, menu 213-229 (0px),
+                 new chat 244-260 (15px, rowActions' own gap). So the pin climbs from the
+                 first button up to the row's own child (rowActions) and goes in there:
+                 all three are then siblings under one flex gap, and the 15px that
+                 spaces the official pair spaces the pin too. The official pair keeps its
+                 own spacing either way; the pair as a whole shifts left by one button
+                 plus one gap, which is the price of honouring the row's rhythm. */
+              var host = row
+              var node = row.querySelector('button')
+              while (node !== null && node.parentElement !== null && node.parentElement !== row) {
+                node = node.parentElement
+              }
+              if (node !== null && node.parentElement === row) host = node
               host.insertBefore(button, host.firstChild)
             } else {
               decorate(button, id, on)
@@ -1759,6 +1832,204 @@
 
         return dispose
       }), 'evangelion: wechat workspace switch')
+
+      /* ------------------------------------------------------------------------
+         Round 63 (2026-10-20) -- the four OFFICIAL composer panels centre on their
+         trigger, the way the theme's own two pickers already do.
+
+         Root cause, read out of the shipped bundles rather than guessed. Those four
+         panels are placed by JavaScript, never by a stylesheet:
+
+           · '@deepseek-ai/dsh-client-ui-primitives'' 'useAnchoredPosition' computes,
+             for its DEFAULT 'align: 'start'',
+                 left = align === 'end' ? rect.right - panelWidth : rect.left
+             clamps it to '[margin, innerWidth - panelWidth - margin]', and returns
+             the pair as state.
+           · Its callers write that state as an INLINE style on a portaled
+             'position: fixed' div ('createPortal(..., document.body)'), then re-derive
+             it on scroll, on resize and on a ResizeObserver tick of the panel.
+           · 'ui-chat''s 'useStatDialog()' (the 会话统计 and Token 用量 pills) and
+             'ui-conversation''s ContextMeter (上下文已用) all call it with
+             'side: 'top'', 'gap: 8', 'margin: 12' and NO 'align' -- so all three take
+             the 'start' branch and hang off the trigger's LEFT edge.
+           · 'ui-permission-presets' reaches the same placement through the Menu
+             primitive, whose portaled list is likewise 'position: fixed' with an
+             inline 'left'.
+
+         The theme's own panels are centred by CSS instead: '.eva-mep-pop' carries
+         'left: 50%' plus 'transform: translateX(calc(-50% + var(--eva-mep-shift)))',
+         and the controller measures the real panel and appends the edge correction
+         afterwards. That asymmetry is the entire visual gap the user reported.
+
+         It is NOT reachable from a class. The official placement writes an inline
+         'left', which beats any sheet rule short of '!important' -- and '!important'
+         still cannot express "half the trigger's width minus half of mine" without
+         knowing both boxes. The correction has to happen in the same coordinate space
+         the official placement writes in, and at the same moments it re-derives.
+
+         Three facts that decide the shape of this effect:
+
+           · The panels are children of 'document.body', not of the composer, so no
+             selector rooted at '[data-composer-card]' can reach them. The scan is a
+             body-level query for portaled fixed panels -- and it must therefore be
+             narrow, because the settings modal is 'role="dialog"' too.
+           · The only link a portal keeps to its anchor is the trigger's own
+             'aria-expanded' state. That works for the three triggers carrying
+             'aria-haspopup' (the two stat pills and the context meter) and NOT for the
+             permission button, which the Menu primitive renders untouched -- so that
+             one is found by its SLOT, the same '[data-slot='conversation.input.permission']'
+             hook src/theme.css already uses for the chevron. Neither half writes a
+             CSS-Modules hash.
+           · The panel is drawn directly above its own trigger, while the sibling
+             pills sit on that trigger's line. Vertical distance therefore identifies
+             the owner; 'MAX_GAP' is the cut that rejects an unrelated dialog.
+
+         The margin is 12, the same value the official clamp uses, so a centred panel
+         near an edge is pulled back inside the viewport instead of hanging off it.
+         At or below 560px, where the composer row wraps and the pill row runs close to
+         the card's edges, that clamp is the branch that actually runs. */
+
+      ctx.effect(() => deferEffect(() => {
+        if (typeof document === 'undefined') return undefined
+        if (typeof window === 'undefined') return undefined
+
+        /* The four panels, as portaled fixed boxes. 'role' is the one attribute all
+           three implementations agree on: ContextMeter and the stat dialog each render
+           'role="dialog"', the Menu primitive renders 'role="menu"'. */
+        var PANEL_SELECTOR = 'body > div[role="dialog"], body > div[role="menu"]'
+        /* An open composer trigger. 'aria-haspopup' separates these from the hundreds
+           of other aria-expanded buttons in the app. */
+        var OPEN_TRIGGER = '[aria-expanded="true"][aria-haspopup]'
+        /* The permission button carries no aria-haspopup (see above), so it is
+           addressed by slot. */
+        var PERMISSION_TRIGGER = "[data-slot='conversation.input.permission'] button"
+        /* Same value the official clamp uses (PANEL_MARGIN in stat-dialog, and 'margin'
+           at every useAnchoredPosition call site here). */
+        var MARGIN = 12
+        /* A portaled dialog that is nowhere near a composer trigger is somebody else's
+           surface; it must not move. */
+        var MAX_GAP = 240
+        /* And the placement must PROVE it belongs to that trigger: the official
+           useAnchoredPosition writes 'left' equal to the anchor's own left edge (plus at
+           most a few px of the theme's own shift), so a panel whose left edge sits
+           anywhere else was anchored to something else. This is what keeps the sidebar's
+           视图选项 menu -- also a 'role="menu"' portal -- out of the sweep. */
+        var ANCHOR_TOLERANCE = 24
+        /* Marked, so the write itself can be told apart from the official one. */
+        var MARK = 'data-eva-panel-centred'
+
+        function isPanel(node) {
+          if (node === null || node === undefined || node.nodeType !== 1) return false
+          if (node.parentNode !== document.body) return false
+          var role = node.getAttribute('role')
+          if (role !== 'dialog' && role !== 'menu') return false
+          /* Only boxes the placement owns: a static dialog keeps its own flow. */
+          var view = window.getComputedStyle(node)
+          if (view.position !== 'fixed') return false
+          if (view.visibility === 'hidden' || view.display === 'none') return false
+          /* The measure pass parks the panel at 0,0 with visibility:hidden; a zero
+             width means it is not laid out yet and there is nothing to centre. */
+          return node.getBoundingClientRect().width > 0
+        }
+
+        /* The trigger a panel belongs to. 'role="menu"' means the permission list, the
+           one surface whose anchor is found by slot rather than by state; everything
+           else takes the open aria-haspopup trigger nearest the panel's own edge, which
+           is exactly what tells three adjacent pills apart. */
+        function triggerFor(panel) {
+          var box = panel.getBoundingClientRect()
+          /* The permission list: a 'role="menu"' portal, whose anchor keeps no state
+             attribute of its own, so every slot button is a candidate and the nearest
+             one wins -- the composer can render more than one (the hero and the docked
+             card are both real composers). */
+          var scope = panel.getAttribute('role') === 'menu' ? PERMISSION_TRIGGER : OPEN_TRIGGER
+          var all = document.querySelectorAll(scope)
+          var best = null
+          var bestGap = Infinity
+          for (var i = 0; i < all.length; i += 1) {
+            var rect = all[i].getBoundingClientRect()
+            if (rect.width === 0 && rect.height === 0) continue
+            var gap = box.top >= rect.bottom
+              ? box.top - rect.bottom
+              : (rect.top >= box.bottom ? rect.top - box.bottom : 0)
+            if (gap < bestGap) { bestGap = gap; best = rect }
+          }
+          return bestGap > MAX_GAP ? null : best
+        }
+
+        /* Centred on the trigger, clamped into the viewport by the official margin.
+           Written as a px 'left' on the same element, because that is the property the
+           official placement writes; nothing else about the panel is touched, so its
+           width, padding, row layout and line boxes stay the bundle's own. */
+        function centre(panel) {
+          if (!isPanel(panel)) return
+          var trigger = triggerFor(panel)
+          if (trigger === null) return
+          var marked = panel.hasAttribute(MARK)
+          /* Proof of ownership, and the reason the sidebar's 视图选项 menu is left where
+             it is: the two components that lay these boxes out both write 'left' as the
+             anchor's own left edge, so an unmarked panel whose left edge is not on its
+             trigger was anchored to a different element and is none of our business. A
+             marked panel is ours already and is skipped past the check -- after centring,
+             its left is nowhere near the trigger by design. */
+          if (!marked) {
+            var written = parseFloat(panel.style.left)
+            if (!isFinite(written)) return
+            if (Math.abs(written - trigger.left) > ANCHOR_TOLERANCE) return
+          }
+          var view = window.innerWidth
+          var width = panel.offsetWidth
+          if (!width || !view) return
+          var left = trigger.left + trigger.width / 2 - width / 2
+          var highest = view - width - MARGIN
+          if (left > highest) left = highest
+          if (left < MARGIN) left = MARGIN
+          left = Math.round(left)
+          /* Our own write creates an attribute record; this early return is what keeps
+             that record from cycling back through schedule(). */
+          if (marked && panel.style.left === left + 'px') return
+          panel.setAttribute(MARK, '')
+          panel.style.left = left + 'px'
+        }
+
+        function sweep() {
+          var panels = document.querySelectorAll(PANEL_SELECTOR)
+          for (var i = 0; i < panels.length; i += 1) centre(panels[i])
+        }
+
+        var queued = false
+        function schedule() {
+          if (queued) return
+          queued = true
+          var run = function () { queued = false; sweep() }
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run)
+          else setTimeout(run, 16)
+        }
+
+        var observer = new MutationObserver(schedule)
+        /* 'childList' catches a panel being mounted and unmounted; 'attributes' on
+           'style' catches the official placement re-deriving itself after a scroll, a
+           resize or a ResizeObserver tick -- the moment an uncorrected left returns. */
+        observer.observe(document.body, {
+          childList: true,
+          subtree: false,
+          attributes: true,
+          attributeFilter: ['style', 'role']
+        })
+        window.addEventListener('scroll', schedule, true)
+        window.addEventListener('resize', schedule)
+        sweep()
+
+        return function () {
+          observer.disconnect()
+          window.removeEventListener('scroll', schedule, true)
+          window.removeEventListener('resize', schedule)
+          var panels = document.querySelectorAll('[' + MARK + ']')
+          for (var i = 0; i < panels.length; i += 1) {
+            panels[i].removeAttribute(MARK)
+          }
+        }
+      }), 'evangelion: centred panels')
 
       /* Read-only surface for troubleshooting and for the delivery docs. */
       exports.manifest = MANIFEST
