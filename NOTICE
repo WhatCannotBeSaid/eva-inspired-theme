@@ -99,9 +99,14 @@ excludes only the switch's own package from the batch, but this copy is vendored
 into the theme's client bundle, so the theme itself is an unofficial plugin too and
 would otherwise be offered up for disabling — by a button that the theme's own
 bundle provides. The switch now excludes its host bundle as well. Both lists are at
-the top of the respective file and pinned by the cli.27 and cli.28 checks in
-tools/selfcheck.mjs; everything else in each file is still upstream's code.
-Refreshing either file from upstream must re-apply them.
+the top of the respective file; the original contract tripwires remain in cli.27
+and cli.28 of tools/selfcheck.mjs. Current patch inventory is maintained in
+both file headers and docs/optimization-s1-s10.md: status rail a-f (including
+scoped lookup, compositor breathing and fallback mutation wakeups), toggle a-g
+(including cached group discovery and unrelated-mutation filtering). New behavior
+is covered by tools/runtime.test.mjs. No pristine upstream checkout/hash was
+available for this change; this does not claim byte equivalence to upstream.
+Refreshing either file from upstream must re-apply and test the listed patches.
 
 
 4. Background wallpapers — NOT redistributed, linked by URL

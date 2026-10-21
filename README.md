@@ -48,7 +48,7 @@ names. Credits are in [Fan work and attribution](#fan-work-and-attribution).
 | Modes | **Title Card** (light) and **Central Dogma** (dark) |
 | Token layer | 55 measured overrides (41 in the light arm, 14 in the dark arm) on a single removable layer |
 | Wallpaper layer | No artwork ships in this repository; the browser fetches it at paint time. The tracked manifest points at two third-party pictures — the light default on haowallpaper.com, the dark one on wallhaven — and the maintainer's own machine embeds local copies instead. Surface alphas are solved against a WCAG contrast budget |
-| Boot mask | Plays once per build — the mark is derived from the bundle, so a new build replays it; `?boot=0` skips one, `?boot=1` forces one. Timings and triggers unchanged |
+| Boot mask | Plays once per DSH launch — the mark lives in sessionStorage, so a reload inside one run does not replay it and quitting DSH does; `?boot=0` skips one, `?boot=1` forces one. Timings and look unchanged |
 | Brand mark | One monochrome SVG illustration, drawn at 28×28 inside the 36×36 slot beside the wordmark |
 | Composer row | The model and effort triggers carry no chevrons; on a narrow row both become 28×28 icon buttons level with the add and dictation buttons, and the whole row shares one seam (6px wide, 3px narrow) |
 | Also inside | A plugin on/off switch and a session-row status rail, both vendored from MIT plugins; a pin button on every workspace and session row; a switch for the WeChat workspace on the workspace row, shown only while WeChat holds an account |
@@ -178,8 +178,9 @@ with them. The sidebar's own view-options menu is left where the host puts it.
   you (an approval, a question, a plan review), red while it is the one open in the
   main area, purple while it finished unread. A pinned row gets a rainbow title
   instead of a rail.
-- The **boot mask** once per build (the mark follows the bundle, so a new build
-  replays it; `?boot=1` forces a replay, `?boot=0` skips one).
+- The **boot mask** once per DSH launch (the mark lives in sessionStorage: a reload
+  inside one run does not replay it, quitting DSH does; `?boot=1` forces a replay,
+  `?boot=0` skips one).
 
 Settings themselves remain the official dialog. The single change there is that the
 dim tint behind it is removed; the panel and click-outside-to-close are untouched.
@@ -239,7 +240,8 @@ Drop the entry from `dsh.profile.bundles` too if you added it there.
 ```
 index.js              host half — mounts, registers no route, plays nothing
 client.js             GENERATED browser bundle. Not tracked; build it. Do not edit.
-src/client.js         the real client half
+src/client.js         service and effect orchestration
+src/runtime/          private glass/pins/wechat/panels mounts
 src/theme.css         the token layer
 cordis.patch.yml      the bundle-patch mount declaration
 build/                shipped assets + the two vendored client halves
@@ -278,9 +280,22 @@ asserted (`wall.2`, `wall.6`, `wall.7`, `wall.8`).
 npm run verify
 ```
 
-Runs every gate: syntax check of both bundle halves, the self-check (126
-assertions), the token audit (55 overrides, exactly the planned 55), and a rebuild
-comparison that proves `client.js` is in sync with `src/`.
+Runs development gates: syntax checks, 25 behavioral/build-contract tests, 127
+static assertions, the 55-token audit, and exact artifact/source comparison.
+Build and check commands accept the same `--mode auto|public|local`; `--public`
+remains an alias. A mismatched artifact/input fails rather than guessing by image format.
+
+Release validation is `npm run verify:release -- --mode public --host-version
+<exact-version>`. Fresh target-host evidence, collection time and input hashes
+are required; old dumps without provenance yield a partial development audit,
+not verified compatibility. `npm run measure:resources` measures local compression
+and Node compilation, not browser performance. Build/prepare still default to
+auto: release only from a clean isolated checkout without out/, then validate the
+packed artifact's public mode. Shipped tools/*.mjs support source builds.
+
+See [S1–S10 implementation and acceptance record](docs/optimization-s1-s10.md)
+for limitations and rollback. No host profile was changed; the working artifact
+was restored to local mode.
 
 ## Licence
 

@@ -30,6 +30,8 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveBuild, validateArtifact } from './build-contract.mjs'
+import { inspectEvidence } from './audit-evidence.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => readFileSync(join(ROOT, relative), 'utf8')
@@ -54,6 +56,9 @@ const tokensDoc = JSON.parse(read('src/tokens.json'))
 const TOKENS = tokensDoc.tokens
 const names = Object.keys(TOKENS)
 const client = read('client.js')
+const artifactBuild = validateArtifact(client, resolveBuild(ROOT, process.argv.slice(2)))
+const hostIndex = process.argv.indexOf('--host-version')
+const provenance = inspectEvidence(ROOT, hostIndex < 0 ? null : process.argv[hostIndex + 1])
 
 /* --------------------------------------------------------------- classification */
 
@@ -166,9 +171,12 @@ const notVerified = [
   evidence.componentLevel ? null : 'component-level',
   evidence.unchanged ? null : 'unchanged-vs-official',
   evidence.refs ? null : 'consumer counts',
+  provenance.problems.length === 0 ? null : 'evidence provenance: ' + provenance.problems.join('; '),
 ].filter(Boolean)
 
 const summary = {
+  build: artifactBuild,
+  provenance: { verified: provenance.problems.length === 0, problems: provenance.problems },
   plan: PLANNED,
   dshOwned: rows.filter((r) => r.layer !== 'other').length,
   themedColor: colours,
@@ -227,6 +235,9 @@ if (process.argv.includes('--json')) {
 /* ------------------------------------------------------------------ verdict */
 
 const failures = []
+if (process.argv.includes('--strict-evidence') && notVerified.length > 0) {
+  failures.push('strict evidence gate: ' + notVerified.join(', '))
+}
 if (count !== PLANNED.total) {
   failures.push(`override count is ${count}, the S2 plan says ${PLANNED.total}`)
 }
@@ -259,6 +270,7 @@ if (notVerified.length === 0) {
 } else {
   console.log(`\nAUDIT OK (partial) — ${count} overrides, exactly the planned ${PLANNED.total} ` +
     `(A ${PLANNED.A} + B ${PLANNED.B}); all embedded in client.js and all dsh-owned.`)
-  console.log(`  NOT VERIFIED: ${notVerified.join(', ')} — evidence absent: ${missingEvidence.join(', ')}`)
-  console.log('  (these are "cannot decide", not "passed": restore the dumps in out/ and re-run)')
+  console.log(`  NOT VERIFIED: ${notVerified.join(', ')}`)
+  if (missingEvidence.length) console.log(`  evidence absent: ${missingEvidence.join(', ')}`)
+  console.log('  (cannot decide, not passed: collect fresh target-host dumps and their provenance; do not re-stamp old dumps)')
 }

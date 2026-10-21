@@ -16,6 +16,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { CLIENT_FILES, resolveBuild, validateArtifact } from './build-contract.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const read = (relative) => readFileSync(join(ROOT, relative), 'utf8')
@@ -58,7 +59,7 @@ const bootJs = read('src/boot-screen.js')
 /* The half that actually mounts the theme is a file too since 2026-10-07, interpolated
    verbatim next to the mask's behaviour: the bundle must carry its bytes, not a
    retyped copy of them (cli.21/cli.22). */
-const clientJs = read('src/client.js')
+const clientJs = CLIENT_FILES.map(file => read(file).replace(/[\r\n]+$/, '')).join('\n')
 const paintCss = css + '\n' + bootCss
 const client = read('client.js')
 
@@ -71,9 +72,8 @@ const client = read('client.js')
    the file on disk is the SPECIMEN and it is what tells the first two apart. The
    TRACKED manifest is also checked on its own terms by wall.6 — that is the file a
    push would carry. */
-const LOCAL_WALLPAPERS = 'out/wallpapers.local.json'
-const clientHasArt = client.includes('data:image/webp;base64,')
-const wallpaperFile = clientHasArt && exists(LOCAL_WALLPAPERS) ? LOCAL_WALLPAPERS : 'build/wallpapers.json'
+const artifactBuild = validateArtifact(client, resolveBuild(ROOT, process.argv.slice(2)))
+const wallpaperFile = artifactBuild.wallpaperManifest
 const wallpapers = JSON.parse(read(wallpaperFile))
 const index = read('index.js')
 const patch = read('cordis.patch.yml')
@@ -674,7 +674,7 @@ checks.check('boot.5', 'every documented way to skip the mask exists', () => {
   const want = [
     ['?boot=0', /boot=0/],
     ["localStorage '0'", /getItem\(BOOT_KEY\) === '0'/],
-    ['already played this build', /getItem\(BOOT_SEEN_KEY\) === BOOT_MARK/],
+    ['already played this run', /sessionStorage\.getItem\(BOOT_SEEN_KEY\) === BOOT_SEEN_VALUE/],
     ['reduced motion', /prefers-reduced-motion/],
     ['per-load mark', /__evaBootMark/],
   ]
@@ -711,6 +711,27 @@ checks.check('boot.7', 'the build mark is per-build, and ?boot=1 forces a replay
   }
   return /indexOf\('boot=1'\)\s*>=\s*0\)\s*return true/.test(client) ||
     '?boot=1 does not force a replay'
+})
+/* 2026-10-21: the user's rule is "quitting DSH and reopening plays it once, nothing
+   else replays it". sessionStorage is the only browser store whose lifetime matches
+   that sentence — it survives a reload of the same window and dies with the window.
+   The previous rule wrote the same mark into localStorage, which never clears, so the
+   mask played once per machine and then looked broken. boot.8 pins the store AND the
+   absence of the old one: a regression that swaps it back is silent by nature, so a
+   passing suite is the only thing that would notice. */
+checks.check('boot.8', 'the once-per-run record lives in sessionStorage, never localStorage', () => {
+  const seenWrite = /sessionStorage\.setItem\(BOOT_SEEN_KEY, BOOT_SEEN_VALUE\)/
+  const seenRead = /sessionStorage\.getItem\(BOOT_SEEN_KEY\) === BOOT_SEEN_VALUE/
+  if (!seenWrite.test(bootJs)) return 'src/boot-screen.js does not record the run in sessionStorage'
+  if (!seenRead.test(bootJs)) return 'src/boot-screen.js does not read the run record from sessionStorage'
+  if (/localStorage\.setItem\(BOOT_SEEN_KEY/.test(bootJs) ||
+      /localStorage\.getItem\(BOOT_SEEN_KEY/.test(bootJs)) {
+    return 'boot-screen.js still keeps the once-per-run record in localStorage'
+  }
+  if (!/var BOOT_SEEN_VALUE = '1'/.test(bootJs)) {
+    return 'the run record is not a build-independent value, so a rebuild would replay it'
+  }
+  return true
 })
 
 /* ---------------------------------------------------------------- client.js */
@@ -807,16 +828,21 @@ checks.check('cli.11c', 'the client half writes browser storage only for the nam
      conversation, so it has no host-side home either. All three are named here so that
      any further write still fails this check. */
   const writes = [...client.matchAll(/localStorage\.setItem\(([A-Za-z_$][\w$]*)/g)].map((m) => m[1])
-  const allowed = ['BOOT_SEEN_KEY', 'PIN_KEY', 'MEP_KEY']
+  const allowed = ['PIN_KEY', 'MEP_KEY']
   const stray = writes.filter((name) => !allowed.includes(name))
   if (stray.length > 0) return 'client.js writes browser storage outside the named keys: ' + stray.join(', ')
-  if (!writes.includes('BOOT_SEEN_KEY')) return 'the boot mask never records that it played'
+  /* 2026-10-21: the boot mask's once-per-run record moved to sessionStorage, so it no
+     longer appears in this localStorage list. Its write is pinned by boot.8 instead;
+     what stays here is that localStorage holds only the two real preferences. */
   if (!writes.includes('PIN_KEY')) return 'the workspace pin set is never written'
-  if (!/localStorage\.setItem\(BOOT_SEEN_KEY,\s*BOOT_MARK\)/.test(client)) {
-    return 'the boot one-shot write does not store BOOT_MARK'
+  if (!/sessionStorage\.setItem\(BOOT_SEEN_KEY,\s*BOOT_SEEN_VALUE\)/.test(client)) {
+    return 'the boot one-shot write does not record the current run'
   }
-  if (!/localStorage\.getItem\(BOOT_SEEN_KEY\) === BOOT_MARK/.test(client)) {
-    return 'the boot mask never checks whether it already played'
+  if (!/sessionStorage\.getItem\(BOOT_SEEN_KEY\) === BOOT_SEEN_VALUE/.test(client)) {
+    return 'the boot mask never checks whether this run already played'
+  }
+  if (/localStorage\.setItem\(BOOT_SEEN_KEY/.test(client) || /localStorage\.getItem\(BOOT_SEEN_KEY/.test(client)) {
+    return 'the boot one-shot record is still written to localStorage'
   }
   if (!/localStorage\.getItem\(BOOT_KEY\) === '0'/.test(client)) {
     return 'the boot mask lost its off-switch read'
@@ -1064,7 +1090,11 @@ checks.check('cli.21b', 'the JS transform preserves every token and every line n
    named in the same file, so a copy pasted into the template still fails. */
 checks.check('cli.22', 'the build reads the mounting half instead of inlining it', () => {
   const builder = read('tools/build-client.mjs')
-  if (!builder.includes("read('src/client.js')")) return 'the build never reads src/client.js'
+  if (!CLIENT_FILES.includes('src/client.js') ||
+      !builder.includes('CLIENT_FILES.map(file => read(file)')) return 'the build never reads the runtime input list'
+  for (const file of CLIENT_FILES) {
+    if (!existsSync(join(ROOT, file))) return 'missing runtime source: ' + file
+  }
   return /\$\{compressJs\(clientJs\)\}/.test(builder) ||
     'the template does not interpolate clientJs through compressJs'
 })
@@ -1274,7 +1304,7 @@ checks.check('cli.26', 'the WeChat entry switches one workspace through the offi
   if (/WX_GROUP_ALIAS/.test(client) || /title !== 'Yu'/.test(client)) {
     return 'the switch still accepts a second name for this group, so it can take over Yu'
   }
-  if (!/scope\.querySelectorAll\('\[data-row-key\]'\)/.test(client)) {
+  if (!client.includes(`scope.querySelectorAll('[data-row-key^="' + WORKSPACE_PREFIX + '"]')`)) {
     return 'the switch does not walk the rows by their official key attribute'
   }
   if (!/function wxGroup\(host\)/.test(client) || !/node\.parentElement !== host/.test(client)) {
@@ -1503,8 +1533,10 @@ checks.check('host.10', 'the sound gate and its npm script are gone with it', ()
     bad.push('tools/check-sound-layer.mjs still exists')
   }
   if (scripts.sounds !== undefined) bad.push('the `sounds` script is still declared')
-  if (/check-sound-layer/.test(scripts.verify ?? '')) bad.push('verify still runs the sound gate')
-  if (!/node tools\/selfcheck\.mjs/.test(scripts.verify ?? '')) {
+  const verifyRunner = scripts.verify === 'node tools/verify.mjs' ? read('tools/verify.mjs') : ''
+  if (/check-sound-layer/.test((scripts.verify ?? '') + verifyRunner)) bad.push('verify still runs the sound gate')
+  if (!/node tools\/selfcheck\.mjs/.test(scripts.verify ?? '') &&
+      !/\['tools\/selfcheck\.mjs', \.\.\.mode\]/.test(verifyRunner)) {
     bad.push('verify no longer runs the self-check')
   }
   return bad.length === 0 || bad.join(', ')
@@ -1642,7 +1674,7 @@ checks.check('wall.8', 'the tracked manifest names its art by https URL and the 
   /* A bundle that embeds its own art has no reason to carry these URLs; a bundle built
      from this manifest must carry every one of them, or the paint layer falls back to
      no background and nothing else would notice. */
-  const unresolved = clientHasArt ? [] : tracked.filter((w) => !client.includes(w.direct))
+  const unresolved = artifactBuild.mode === 'local' ? [] : tracked.filter((w) => !client.includes(w.direct))
   return unresolved.length === 0 || `client.js does not reference: ${unresolved.map((w) => w.id).join(', ')}`
 })
 checks.check('veil.1', 'the veil budget is present and solved for both modes', () => {

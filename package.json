@@ -47,19 +47,25 @@
     "README.md",
     "docs/preview-light.jpg",
     "docs/preview-dark.jpg",
+    "docs/optimization-s1-s10.md",
     "src",
-    "build"
+    "build",
+    "tools/*.mjs"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "build": "node tools/build-client.mjs",
+    "build:public": "node tools/build-client.mjs --mode public",
+    "measure:resources": "node tools/measure-resources.mjs",
     "prepare": "node tools/build-client.mjs",
     "check": "node tools/build-client.mjs --check",
     "selfcheck": "node tools/selfcheck.mjs",
     "audit": "node tools/token-audit.mjs",
-    "verify": "node --check index.js && node --check client.js && node tools/selfcheck.mjs && node tools/token-audit.mjs && node tools/build-client.mjs --check"
+    "test": "node --test tools/runtime.test.mjs tools/build-contract.test.mjs",
+    "verify": "node tools/verify.mjs",
+    "verify:release": "node tools/verify.mjs --strict-evidence"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"

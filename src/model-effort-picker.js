@@ -704,9 +704,7 @@ var EvaModelEffortPicker = (function () {
       if (signature === painted) return
 
       var hold = document.activeElement && shell.panel.contains(document.activeElement)
-        ? (document.activeElement.getAttribute('data-eva-mep-model') ||
-           document.activeElement.getAttribute('data-eva-mep-group-toggle') ||
-           document.activeElement.getAttribute('data-eva-mep-search'))
+        ? document.activeElement.evaFocusKey
         : null
       var top = scroll.scrollTop
 
@@ -736,6 +734,8 @@ var EvaModelEffortPicker = (function () {
         var groupRow = h('button', 'eva-mep__groupRow')
         groupRow.type = 'button'
         groupRow.setAttribute('data-eva-mep-group-toggle', slug(group.id))
+        groupRow.evaGroupId = group.id
+        groupRow.evaFocusKey = JSON.stringify(['group', group.id])
         groupRow.setAttribute('aria-expanded', isClosed ? 'false' : 'true')
         groupRow.tabIndex = -1
         /* Presentation-only hook: a caller that wants the reference's leading glyph per
@@ -766,8 +766,7 @@ var EvaModelEffortPicker = (function () {
       applyPending()
 
       var restored = null
-      if (hold) restored = shell.panel.querySelector('[data-eva-mep-model="' + hold + '"]') ||
-        shell.panel.querySelector('[data-eva-mep-group-toggle="' + hold + '"]')
+      if (hold) restored = rows.find(function (row) { return row.evaFocusKey === hold })
       if (restored && rows.indexOf(restored) >= 0) rove(rows, restored)
       else if (rows.length && !rows.some(function (r) { return r.tabIndex === 0 })) rows[0].tabIndex = 0
 
@@ -795,6 +794,7 @@ var EvaModelEffortPicker = (function () {
       row.setAttribute('aria-checked', selected ? 'true' : 'false')
       row.setAttribute('data-eva-mep-model', slug(groupId + '|' + entry.provider + ':' + entry.model.id))
       row.setAttribute('data-eva-mep-model-id', slug(entry.provider + ':' + entry.model.id))
+      row.evaFocusKey = JSON.stringify(['model', groupId, entry.provider, entry.model.id])
       row.tabIndex = -1
       row.appendChild(h('span', 'eva-mep__optionLabel', entry.model.name))
       /* The check is invisible on every row but the selected one -- CSS holds it at
@@ -841,7 +841,7 @@ var EvaModelEffortPicker = (function () {
       if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
         active && active.getAttribute && active.getAttribute('data-eva-mep-group-toggle') !== null) {
         event.preventDefault()
-        toggleGroup(active.getAttribute('data-eva-mep-group-toggle'))
+        toggleGroup(active.evaGroupId)
       }
     }
 
@@ -894,6 +894,7 @@ var EvaModelEffortPicker = (function () {
     var shell = instance.shell
     instance.el = shell.anchor
     var rows = []
+    var listSignature = null
     var empty = h('div', 'eva-mep__empty', t('empty.efforts'))
     empty.setAttribute('data-eva-mep-empty', '')
 
@@ -971,31 +972,47 @@ var EvaModelEffortPicker = (function () {
 
     function paint() {
       if (instance.destroyed) return
+      var label = labelOf()
+      if (shell.value.textContent !== label) shell.value.textContent = label
+      if (shell.value.hidden !== (label === '')) shell.value.hidden = label === ''
+      var aria = t('effort.trigger.aria', { effort: label })
+      if (shell.trigger.getAttribute('aria-label') !== aria) shell.trigger.setAttribute('aria-label', aria)
+      var list = choices()
+      var value = effective()
+      var title = t('effort.title')
+      var emptyLabel = t('empty.efforts')
+      var signature = JSON.stringify([list, value, title, emptyLabel])
+      var i
+      if (signature === listSignature) {
+        /* Pending is independent of catalog content: keep focus and row identities. */
+        for (i = 0; i < rows.length; i++) {
+          if (rows[i].disabled !== !!state.pending) rows[i].disabled = !!state.pending
+        }
+        return false
+      }
       var hold = document.activeElement && shell.panel.contains(document.activeElement)
-        ? document.activeElement.getAttribute('data-eva-mep-effort')
+        ? document.activeElement.evaEffortKey
         : null
       var top = scroll.scrollTop
-      var label = labelOf()
-      shell.value.textContent = label
-      shell.value.hidden = label === ''
-      shell.trigger.setAttribute('aria-label', t('effort.trigger.aria', { effort: label }))
-
       scroll.textContent = ''
+      scroll.setAttribute('aria-label', title)
       rows = []
-      var list = choices()
       if (!list.length) {
+        if (empty.textContent !== emptyLabel) empty.textContent = emptyLabel
         scroll.appendChild(empty)
-        return
-      }
-      var value = effective()
-      var i
-      for (i = 0; i < list.length; i++) {
-        rows.push(effortRow(list[i], list[i].effort === value))
+      } else {
+        for (i = 0; i < list.length; i++) {
+          rows.push(effortRow(list[i], list[i].effort === value))
+        }
       }
       scroll.scrollTop = top
-      var restored = hold ? shell.panel.querySelector('[data-eva-mep-effort="' + hold + '"]') : null
-      if (restored && rows.indexOf(restored) >= 0) rove(rows, restored)
-      else if (rows.length && !rows.some(function (r) { return r.tabIndex === 0 })) rows[0].tabIndex = 0
+      var restored = null
+      for (i = 0; i < rows.length; i++) if (rows[i].evaEffortKey === hold) restored = rows[i]
+      if (restored) rove(rows, restored)
+      else if (rows.length) rows[0].tabIndex = 0
+      listSignature = signature
+      if (instance.open) { instance.place(); return true }
+      return false
     }
 
     function effortRow(spec, selected) {
@@ -1004,6 +1021,7 @@ var EvaModelEffortPicker = (function () {
       row.setAttribute('role', 'menuitemradio')
       row.setAttribute('aria-checked', selected ? 'true' : 'false')
       row.setAttribute('data-eva-mep-effort', slug(spec.key))
+      row.evaEffortKey = spec.key
       row.tabIndex = -1
       row.appendChild(h('span', 'eva-mep__optionLabel', spec.label))
       row.appendChild(icon(PATH_CHECK, 'eva-mep__check'))

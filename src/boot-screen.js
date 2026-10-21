@@ -2,13 +2,19 @@
     /* --------------------------------------------------------- boot screen
      * 「闸门开启」启动遮罩：两层挡板盖住首屏，左侧进度按墙钟推进，结束后
      * 挡板左右分开、整块淡出并自删。默认开启，localStorage 写 '0' 关闭，
-     * URL 加 ?boot=0 只跳过一次，?boot=1 强制重播一次；**同一份构建只播一次**
-     * （播过就记标记，之后每次启动、每次加载都不再播）。
+     * URL 加 ?boot=0 只跳过一次，?boot=1 强制重播一次；**每次启动 DSH 播一次**
+     * （见下面 BOOT_SEEN_KEY：标记落在 sessionStorage，同一次运行内刷新不重播，
+     * 退出 DSH 再打开才重播）。
      *
-     * 2026-10-12：标记不再写死。它由构建期注入（见下面的 BOOT_MARK），换一份构建
-     * 就换一个标记，于是「每份构建播一次」终于名实相符。在这之前它是常量
-     * 'eva-boot/2026-10-06-a'，6 天没变过，那句话实际退化成「有史以来只播一次」——
-     * 用户就是这么发现「启动画面没了」的。同一轮加了 ?boot=1。
+     * 2026-10-21（用户：「完全退出DSH后再打开播放一次，其他时候不重播」）：
+     * 标记从 localStorage 搬到 sessionStorage。上一版「每份构建播一次」把标记写进
+     * 永不清空的 localStorage，首播之后遮罩再也不出现 —— 用户第二次看到「启动动画
+     * 没了」就是这个原因，而不是动画坏了。现在同一次 DSH 运行里只播一次，重启 DSH
+     * 才播第二次。
+     *
+     * 2026-10-12：BOOT_MARK 仍由构建期注入（产物 8 位哈希）。它现在只用于同页去重
+     * 与调试核对，不再决定「下次启动播不播」。
+     * 更早它写死成 'eva-boot/2026-10-06-a'，6 天没变，那句话退化成「有史以来只播一次」。
      *
      * 这里刻意不读 Host 设置：唯一开关是浏览器本地值，任何时刻都读得到，
      * 因此没有「apply() 首帧读到的只是 schema 默认值」那个竞态。
@@ -35,17 +41,25 @@
      * 2026-10-11 性能（同一处，只收敛时钟数量，时序与外观一字不改）：双时钟原本
      *   无条件并行 —— 60ms 的 setInterval 与 rAF 一起叫同一个 step()，实测每帧多跑
      *   一次。进度是墙钟的纯函数，多叫一次不改变任何一帧的取值，所以现在有 rAF 就
-     *   只走 rAF，setInterval 只在没有 rAF 的环境里顶上。收益很小（挡板每次构建只播
+     *   只走 rAF，setInterval 只在没有 rAF 的环境里顶上。收益很小（挡板每次启动只播
      *   一次，全程约 2.5 秒），记录在此是为了说明这不是被漏掉的定时器：bootTick 一直
      *   在 bootClearTimers() 里清，没有泄漏。
      * ---------------------------------------------------------------- */
     var BOOT_KEY = PLUGIN_ID + '/boot'
-    /* 「这份构建已播过」的标记落点：同一构建只播一次靠它。 */
+    /* 「这一轮 DSH 已播过」的标记落在 **sessionStorage**，规则因此是「每次启动 DSH
+       播一次」（2026-10-21 用户逐字：「完全退出DSH后再打开播放一次，其他时候不重播」）。
+       sessionStorage 的寿命正好是这条规则要的形状：同一窗口内刷新仍保留，窗口一关就
+       清空 —— 也就是退出 DSH 再打开才有第二次。
+       为什么不放 localStorage（2026-10-12 到 10-21 的做法）：它永不清空，于是「每份
+       构建播一次」在首播之后实际退化成「再也不播」，刷新出来就是「启动动画没了」。
+       BOOT_KEY 那条写成 '0' 的关闭开关仍留在 localStorage：那是显式选择，该跨重启。 */
     var BOOT_SEEN_KEY = BOOT_KEY + '/seen'
-    /* 构建标记：@BUILD@ 由 tools/build-client.mjs 在构建期换成产物的 8 位哈希，
-       所以换一份构建就换一个标记，「每份构建只播一次」才真的成立。
-       不要在这里写死字面量 —— 那正是 2026-10-06 到 10-12 之间发生的事：
-       标记是常量，遮罩首播之后就再没出现过。构建器在占位符丢失时会直接报错。 */
+    var BOOT_SEEN_VALUE = '1'
+    /* 构建标记：@BUILD@ 由 tools/build-client.mjs 在构建期换成产物的 8 位哈希。
+       自 2026-10-21 起它只负责同页去重（HMR 换包、重复 apply）与核对，不再参与
+       「下次启动播不播」——那条规则由 sessionStorage 决定。
+       不要在这里写死字面量：2026-10-06 到 10-12 之间标记是常量，遮罩首播之后就再没
+       出现过。构建器在占位符丢失时会直接报错。 */
     var BOOT_MARK = 'eva-boot/@BUILD@'
     var BOOT_MS = 1600
     var BOOT_SLIDE_MS = 620
@@ -68,7 +82,7 @@
 
     function bootEnabled() {
       if (typeof window === 'undefined') return false
-      /* 同一份构建在一张页面里只播一次：HMR 换包、重复 apply 都拦在这里。 */
+      /* 同一轮运行里只播一次：HMR 换包、重复 apply 都拦在这里。 */
       if (window.__evaBootMark === BOOT_MARK) return false
       /* ?boot=1 强制重播一次：压过下面每一条「跳过」的理由，但压不过上面那条同页去重
          —— 否则 HMR 重挂会让挡板再盖一次，那不是重播，是重复。 */
@@ -81,9 +95,12 @@
       try {
         if (window.localStorage && window.localStorage.getItem(BOOT_KEY) === '0') return false
       } catch (e) { /* 隐私模式读不到：照常播 */ }
-      /* 这份构建已经播过一次：跨页面、跨重启都不再播。 */
+      /* 这一轮已经播过：同一次 DSH 运行里的刷新、HMR 换包都不再播；
+         退出 DSH 后 sessionStorage 随窗口销毁，下次启动重新播。
+         读不到 sessionStorage（隐私模式）时按没播过处理 —— 宁可多播一次，
+         也不要重演「以为播过、其实永远不播」。 */
       try {
-        if (window.localStorage && window.localStorage.getItem(BOOT_SEEN_KEY) === BOOT_MARK) return false
+        if (window.sessionStorage && window.sessionStorage.getItem(BOOT_SEEN_KEY) === BOOT_SEEN_VALUE) return false
       } catch (e) { /* 读不到：按没播过处理 */ }
       return true
     }
@@ -149,9 +166,10 @@
       if (bootReduceMotion()) return destroyBoot
       bootDone = true
       if (typeof window !== 'undefined') window.__evaBootMark = BOOT_MARK
-      /* 在开播处就记下「已播」：中途关窗也算播过，下次启动不再播第二次。 */
+      /* 在开播处就记下「这一轮已播」：中途关窗也算播过。落点是 sessionStorage，
+         所以这条记录只活到窗口关闭为止 —— 下一次启动 DSH 会重新播。 */
       try {
-        if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem(BOOT_SEEN_KEY, BOOT_MARK)
+        if (typeof window !== 'undefined' && window.sessionStorage) window.sessionStorage.setItem(BOOT_SEEN_KEY, BOOT_SEEN_VALUE)
       } catch (e) { /* 写不进去：退化成同页只播一次 */ }
 
       var el = document.createElement('div')

@@ -36,7 +36,7 @@
  * 一条直轨。::before 绝对定位在行内、不受行圆角裁剪，才是整行高、两端直角的一条轨。
  *
  * ── 主题侧补丁（eva-inspired-theme）─────────────────────────────────────────
- * 这份副本已不是上游 v0.1.0 的逐字节拷贝：主题仓库对热路径打了五处补丁（见 D78）——
+ * 这份副本已不是上游 v0.1.0 的逐字节拷贝：主题仓库对热路径打了六处补丁——
  *   a. schedule() 由 queueMicrotask 改为 rAF 合并：微任务只合并同一批观察记录，流式
  *      回复里每到一个 token 就是一批，一帧能落好几次对账；rAF 把上限压到每帧一次。
  *   b. 置顶属性 data-eva-pinned 改为先比后写：它被样式表选中，同值重写也会让该行样式失效。
@@ -44,7 +44,8 @@
  *   d. sync() 的行查询先收窄到工作区侧栏子树，侧栏不在或查不到行时回退整份文档。
  *   e. 呼吸由逐帧插值 background 改为动画 opacity：低点 35% 是同一个合成结果，
  *      但 background 是绘制属性、每帧都要重绘，opacity 落在合成器上。
- * 刷新上游仍按 D29/D77 的办法：用新版 lib/client.js 覆盖本文件，再把 a/b/c/d/e 贴回来
+ *   f. S6：scopeMissed 时允许文档回退行的 mutation 唤醒；侧栏行恢复后重新收窄。
+ * 刷新上游仍按 D29/D77 的办法：用新版 lib/client.js 覆盖本文件，再把 a/b/c/d/e/f 贴回来
  * （本机已无该 checkout，无法先改上游再 vendor）。
  */
 window.__ModuleLoader__.load({
@@ -349,6 +350,7 @@ window.__ModuleLoader__.load({
        */
       const SCOPE_SELECTOR = "[data-slot='sidebar.workspaces']"
       let scopeHost = null
+      let scopeMissed = true
       /** 侧栏节点：还挂着就复用，卸载后重新解析，所以不会记住一棵已被 React 换掉的树。 */
       function rowScope() {
         if (scopeHost !== null && scopeHost.isConnected) return scopeHost
@@ -360,8 +362,12 @@ window.__ModuleLoader__.load({
         const host = rowScope()
         if (host !== null) {
           const scoped = host.querySelectorAll(ROW_SELECTOR)
-          if (scoped.length > 0) return scoped
+          if (scoped.length > 0) {
+            scopeMissed = false
+            return scoped
+          }
         }
+        scopeMissed = true
         return document.querySelectorAll(ROW_SELECTOR)
       }
 
@@ -430,7 +436,7 @@ window.__ModuleLoader__.load({
        */
       function touches(records) {
         const host = scopeHost
-        if (host === null || !host.isConnected) return true
+        if (scopeMissed || host === null || !host.isConnected) return true
         for (const record of records) {
           const target = record.target
           if (target !== null && target !== undefined && (target === host || host.contains(target))) return true

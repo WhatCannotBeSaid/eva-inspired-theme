@@ -28,7 +28,7 @@
  * 远程返回值统一为 { ok: true, value } | { ok: false, error: { code, message } }。
  *
  * ── 主题侧补丁（eva-inspired-theme，D79 / 2026-10-09；f 为 D82 / 2026-10-10）──────
- * 本文件按 D29 是上游 v1.3.0 客户端半的逐字节副本。主题侧此后打了六处补丁，刷新上游
+ * 本文件起于 D29 的上游 v1.3.0 客户端半副本。主题侧此后打了七处补丁，刷新上游
  * （用新版 lib/client.js 覆盖本文件再重建）时必须重贴：
  *   a. `reload()` 加序号守卫 —— 只有最后一次调用允许写 snapshot，先发的旧响应不再覆盖新快照；
  *   b. 事件驱动的重载改走 `scheduleReload()` 单槽去抖 —— 原为每个事件一次并发 RPC；
@@ -42,7 +42,8 @@
  *      把这个按钮本身一起停掉。`classify()` 的排除条件改走 `isSelfBundle()`，排除集 =
  *      `SELF` + `PLUGIN_ID`（构建脚本在束顶层声明，见 `tools/build-client.mjs`），
  *      `classify` 的注释、确认框的 hint、字典的 `dialog.host.*` 三处同步登记这件事。
- * 本机已无上游 checkout，因此这些补丁只登记在这里、`NOTICE` 第 4 节与 `docs/design.md`
+ *   g. S7：缓存已挂载分组与标题；无关 mutation 不全页扫描，替换或重挂载仍重新发现。
+ * 本机已无上游 checkout，因此这些补丁登记在这里、`NOTICE` 第 3 节与 `docs/optimization-s1-s10.md`
  * 的 D79/D82，并由 `tools/selfcheck.mjs` 的 cli.27 / cli.28 钉住（绊线，不是哈希）。
  * ────────────────────────────────────────────────────────────────────────
  */
@@ -453,6 +454,7 @@ window.__ModuleLoader__.load({
 		let ctxRef = null;
 		let disposed = false;
 		let styleEl = null;
+		let groupEl = null;
 		let slotEl = null;
 		let btnEl = null;
 		let observer = null;
@@ -735,7 +737,14 @@ window.__ModuleLoader__.load({
 
 		function sync() {
 			if (disposed) return;
-			const group = document.querySelector(GROUP_SELECTOR);
+			// P7: keep only a connected, still matching group; never cache across remounts.
+			if (!groupEl || !groupEl.isConnected || !groupEl.matches(GROUP_SELECTOR)) {
+				if (slotEl) slotEl.remove();
+				slotEl = null;
+				btnEl = null;
+				groupEl = document.querySelector(GROUP_SELECTOR);
+			}
+			const group = groupEl;
 			const head = group ? group.firstElementChild : null;
 			if (!head) {
 				slotEl = null;
@@ -760,6 +769,32 @@ window.__ModuleLoader__.load({
 			slotEl = slot;
 			btnEl = button;
 			render();
+		}
+
+		// P7: unrelated streaming chat mutations must not trigger a document scan.
+		// Discovery inspects only changed subtrees; slot/head replacement remains relevant.
+		function touchesGroup(records) {
+			if (disposed) return false;
+			if (groupEl && (!groupEl.isConnected || !groupEl.matches(GROUP_SELECTOR))) return true;
+			for (const record of records) {
+				if (groupEl) {
+					if (record.target === groupEl || record.target === groupEl.firstElementChild) return true;
+					if (slotEl && !slotEl.isConnected) return true;
+					continue;
+				}
+				if (record.type === 'attributes') {
+					if (record.target.matches(GROUP_SELECTOR)) return true;
+					continue;
+				}
+				for (const node of record.addedNodes) {
+					if (node.nodeType === 1 && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))) return true;
+				}
+			}
+			return false;
+		}
+
+		function onMutations(records) {
+			if (touchesGroup(records)) schedule();
 		}
 
 		function schedule() {
@@ -1378,6 +1413,7 @@ window.__ModuleLoader__.load({
 				slotEl = null;
 			}
 			btnEl = null;
+			groupEl = null;
 			if (styleEl) {
 				styleEl.remove();
 				styleEl = null;
@@ -1405,8 +1441,8 @@ window.__ModuleLoader__.load({
 				}
 			}
 
-			observer = new MutationObserver(schedule);
-			observer.observe(document.body, { childList: true, subtree: true });
+			observer = new MutationObserver(onMutations);
+			observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-plugin-group'] });
 
 			sync();
 			void reload();
