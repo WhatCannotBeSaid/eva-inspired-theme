@@ -504,10 +504,25 @@
            and is still the only thing that runs if invoke() throws. */
         var modalScopeOf = function () {
           var nodes = document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="menu"]')
-          if (nodes.length === 0) return null
-          var top = nodes[nodes.length - 1]
-          var scope = top.getAttribute('data-shortcut-modal')
-          return scope === null || scope === '' ? 'other' : scope
+          /* The host's selector, read the host's way: the LAST match in the document,
+             on screen or not (dsh-client-ui-primitives modalSelector; the keyboard
+             path at dsh-client-shortcuts/lib/client.js:1405 reads it identically). A
+             popover that collapses by CSS while staying mounted therefore counts as an
+             open modal, and a scope other than settings refuses the invoke below.
+             Round 69 (2026-10-24): walk back past matches with no layout box, so the
+             scope returned is the modal a person could actually see. The composer's two
+             picker popovers used to claim role="menu" while closed and are fixed at the
+             source (src/model-effort-picker.js, setMenuRole); this guard covers the same
+             mistake made by any other mounted popover. Without it, SYSTEM is a dead
+             click in a conversation and live everywhere else -- exactly the asymmetry
+             that was reported. */
+          for (var i = nodes.length - 1; i >= 0; i -= 1) {
+            var node = nodes[i]
+            if (node.getClientRects().length === 0) continue
+            var scope = node.getAttribute('data-shortcut-modal')
+            return scope === null || scope === '' ? 'other' : scope
+          }
+          return null
         }
 
         var pressSettingsShortcut = function () {
@@ -605,76 +620,38 @@
          list stays silent -- which matters, because each one is a durable write. */
       ctx.effect(() => deferEffect(() => mountWorkspacePins(ctx)), 'evangelion: workspace pins')
 
-      /* Round 60 (2026-10-15) -- the entry only exists while the 微信 channel holds an account.
-         User's words: 「没有连接微信的时候隐藏按钮图标」. A channel with nothing bound behind it
-         should not spend a button in the 工作区 row, and it has to come back by itself the moment
-         an account is bound -- the same rule round 50 put on the 微信 entry and round 55 copied
-         onto the Telegram one, now that dsh-wechat is the only channel left. The question is
-         asked of the CHANNEL rather than guessed from the list: a 微信会话- titled group is
-         evidence that a workspace exists, not that a phone can reach it -- this repo has already
-         seen four such conversations left behind by a retired plugin. What counts as an account
-         is the plugin's own criterion, not this theme's: dsh-wechat-plugin's settings page treats
-         status.accounts.length === 0 as 未连接 (client.js:1080 and :1117 branch on it), and the
-         answer comes from the same route that page reads -- /.dsh-wechat-plugin/status, the
-         PREFIX at plugin client.js:33, 'request(PREFIX + "/status")' at :618. Also now:
-         while the gate is dark the BUTTON IS NOT IN THE ROW at all rather than merely invisible,
-         so the row keeps the order it had. */
-      /* Round 51 (2026-10-12) -- the plugin went back to dsh-wechat, so the entry does too.
-         User's words (m01147): 「DSH-IM不好用！把DSH-Wechat给我换回来，并且把工作区旁边的图标
-         也改回来。」 Two halves, one round: the profile drops @xmanrui/dsh-im and installs
-         dsh-wechat-plugin 0.37.0 (with the origin-gate patch rebased onto it), and this theme
-         half withdraws the pair of channel filters rounds 42/49 put here -- the channel table
-         CHANNELS, both artworks, the three-valued state, the pump that clicked the host's own
-         show-more control frame by frame, and round 50's 微信 channel gate -- and restores the
-         single 「微信会话」 workspace switch of rounds 43-45 (contract data-eva-wx-*, the state
-         attribute always carries 'weixin'). The comment and the body below are rounds 43-47's,
-         not a character changed. */
-      /* Round 43 (2026-10-10) -- the 微信 entry, one click from the 工作区 row.
+      /* Round 64 (2026-10-24) -- the 工作区 row's channel entries are back, one per channel the
+         plugin ships, and they share ONE visibility rule.
 
-         Round 41 put a Telegram filter on this row and round 42 a 微信 entry beside it.
-         Round 45 (later the same day) removed the Telegram one at the user's word:
-         「再去telegram按钮，毕竟现在不用了，可以删去这个功能了。」 Its whole machine --
-         the channel list, the title marker, the staged expansion through the official
-         show-more control, the row tags -- went with it. What is left is a switch on ONE
-         workspace, which is what round 43 had already asked for and what round 44 finished:
-         「1 是那枚筛选按钮 2「微信会话」及其里面的会话一起搬。 3.点亮微信按钮时才出现。
-         先去掉微信按钮先前的功能，然后加入我现在要求的功能。」
+         User's words: 「我已切回 dsh-im，恢复工作区侧边栏中与之对应的按钮。再按同一实现方式，
+         为其他平台补充对应按钮。最后统一实现显示逻辑：平台已接入时显示该按钮，未接入时隐藏该
+         按钮。」 Three parts: the profile is back on @xmanrui/dsh-im 5.6.0, the row's entries
+         are back with it, and the pair round 49 had (Telegram + 微信) is widened to every
+         channel that plugin's settings page offers -- twelve of them, read from its own
+         SESSION_CHANNEL_LABELS rather than guessed.
 
-         What it acts on: the workspace dsh-wechat-plugin creates and names 微信会话. It
-         arrives as one group of this same tree, so the switch needs no service call and no
-         host-side door -- the group is a DOM node. While the switch is off that group is
-         out of the list; while it is on every OTHER group is out of the list instead, so
-         the list holds the 微信 conversations and nothing else.
+         What the entries do is round 42's filter, unchanged in kind: one view lit at a time,
+         pressing an entry shows that channel's conversations and hides every other row, pressing
+         it again puts the official list back. Round 43's workspace switch -- and dsh-wechat, the
+         switch's reason to exist -- is retired with the plugin: src/runtime/wechat.js is gone,
+         and its effect with it.
 
-         Round 43 tried to get there with order: -1 alone, which only lifts a group. The
-         other workspaces were still there, merely pushed down, and the user reported
-         exactly that difference: 「点亮微信按钮时，侧栏工作区列表内只显示「微信会话」下的
-         会话条目，其他工作区不得保留，也不得以置顶方式出现；同时不显示「微信会话」这个
-         工作区分组标题，只显示该分组下的会话标题。」 A lift is not a filter, and the sheet
-         has no way to filter with order -- hiding is display: none.
+         What is new is the visibility rule, and it is the SAME for every entry (user's words:
+         「平台已接入时显示该按钮，未接入时隐藏该按钮」). Rounds 50/57 split channels into
+         "keep the entry while the question goes unanswered" and "hide it", which made the row
+         depend on a per-channel default as much as on the channel. Now nothing is drawn before
+         the first answer, a definite "no account" takes the entry away, and an unanswered probe
+         keeps the last word -- so a route that disappears can only ever leave the row as it was,
+         never take an entry the user is using away. The answer is read from the channel's own
+         status route (dsh-im/<channel>, method connection.status), which is what that plugin's
+         settings page reads; the two shapes it answers in are tested in holdsAccount.
 
-         The same words pin the other two halves: the group's own header comes off the list
-         too (that is what leaves its Session titles showing bare), and a folded group is
-         unfolded through its own header click -- a folded group renders no Session rows at
-         all and its header is hidden here, so lighting the entry on one would otherwise
-         leave an empty list.
-
-         Why nothing is moved: the group is a flex item of the tree, the tree is the scroll
-         box, and every write is one attribute this effect owns. React's own render is never
-         fought, and putting the list back is removing the attributes -- nothing on the
-         screen is inserted, moved or deleted.
-
-         The entry is one button, a child of the 工作区 row immediately before the search
-         slot. That row is a flex line with justify-content: flex-end and the search slot
-         carries margin-left: auto, so the button sits immediately right of the 工作区 label
-         while the search button and both official icon buttons keep the pixels they already
-         had. It wore a contract named after Telegram while a Telegram entry shared its box;
-         round 45 renamed the pair to data-eva-wx-button / data-eva-wx-state, so nothing in
-         this theme is named after the feature the user retired.
-
-         The list is a list of Workspaces, so the workspace title is the only handle that
-         survives a reinstall, a second profile or another machine -- see WX_GROUP_LABEL. */
-      ctx.effect(() => deferEffect(() => mountWechatEntry(ctx)), 'evangelion: wechat workspace switch')
+         The entries are inserted into the 工作区 row before the search slot, in the plugin's own
+         channel order, and only the ones with an account are in the row: this profile shows two
+         (Telegram and 微信 -- the two channels it has configured), and the other ten come and go
+         with their own accounts. The button contract is round 49's, data-eva-im-*: the row was
+         never named after the channels of the day, and it stays that way. */
+      ctx.effect(() => deferEffect(() => mountImChannels(ctx)), 'evangelion: im channel filters')
 
       /* ------------------------------------------------------------------------
          Round 63 (2026-10-20) -- the four OFFICIAL composer panels centre on their

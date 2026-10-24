@@ -363,24 +363,25 @@ checks.check('css.11', 'the workspace pin button is styled by contract, not by h
     'the pin button does not start on the official tertiary label colour'
 })
 
-checks.check('css.12', 'the WeChat entry is styled by contract, and the switch owns its group', () => {
-  /* Rounds 41-44 (2026-10-09/10) styled two entries on one contract, `data-eva-tg-*`. Round 45
-   * removed the Telegram one and renamed what is left to `data-eva-wx-*`, so nothing in the
-   * sheet is named after the feature the user retired. The entry button is injected by
-   * src/client.js either way, so this sheet may key only on the theme's own data attributes.
-   * The official header icon-button box is copied verbatim (28x28, radius-sm, no border, no
-   * background, secondary label) so the control lands on the pixels the three official buttons
-   * beside it already occupy, and no rule may hide a group or a header unless the theme's own
-   * tag on the tree is part of the selector.
+checks.check('css.12', 'the channel entries are styled by contract, and the filter owns its rows', () => {
+  /* Rounds 41-44 (2026-10-09/10) styled two entries on one contract, `data-eva-tg-*`; round 45
+   * removed one of them, round 48 renamed the contract to the channel-neutral `data-eva-im-*`,
+   * round 51 swapped the plugins and reduced it to the single `data-eva-wx-*` switch. Round 64
+   * (2026-10-24) puts the channel entries back -- one per channel dsh-im ships -- so the sheet is
+   * back on `data-eva-im-*`, and nothing in it is named after the plugin that was retired. The
+   * entry buttons are injected by src/runtime/im.js either way, so this sheet may key only on the
+   * theme's own data attributes. The official header icon-button box is copied verbatim (28x28,
+   * radius-sm, no border, no background, secondary label) so the controls land on the pixels the
+   * three official buttons beside them already occupy.
    *
-   * Round 51 (2026-10-12): the user swapped the plugins back (m01147「DSH-IM不好用！把 DSH-Wechat
-   * 给我换回来，并且把工作区旁边的图标也改回来。」), so the pair of channel filters rounds 42/48/49 had
-   * put here -- and the channel-neutral `data-eva-im-*` contract that pair needed -- are gone, and this
-   * single WeChat workspace switch is asserted again exactly as it stood in rounds 43-45. */
+   * The filter is one rule, and it must name the tree the client tagged: a row is out unless the
+   * client wrote the staying tag on it. The middle clause is load-bearing -- the selector must not
+   * require an attribute the client deliberately omits (round 48's lesson: a `[data-eva-wx-row]:
+   * not(...)` form hid nothing because the off state is the ABSENCE of the attribute). */
   const sheet = css.replace(/\/\*[\s\S]*?\*\//g, '')
-  if (!/\[data-eva-wx-button\]\s*\{/.test(sheet)) return 'the WeChat entry has no rule'
-  if (!/\[data-eva-wx-state='on'\]\s*\{/.test(sheet)) return 'the lit state has no rule'
-  const box = sheet.match(/\[data-eva-wx-button\]\s*\{([\s\S]*?)\}/)?.[1] ?? ''
+  if (!/\[data-eva-im-button\]\s*\{/.test(sheet)) return 'the channel entry has no rule'
+  if (!/\[data-eva-im-state='on'\]\s*\{/.test(sheet)) return 'the lit state has no rule'
+  const box = sheet.match(/\[data-eva-im-button\]\s*\{([\s\S]*?)\}/)?.[1] ?? ''
   if (!/width:\s*28px/.test(box) || !/height:\s*28px/.test(box)) {
     return 'the entry does not copy the official 28x28 header icon box'
   }
@@ -390,31 +391,24 @@ checks.check('css.12', 'the WeChat entry is styled by contract, and the switch o
   if (!/color:\s*var\(--dsw-alias-label-secondary\)/.test(box)) {
     return 'the entry does not start on the official secondary label colour'
   }
-  /* Both directions of the switch have to be in the sheet: the group is out while the entry is
-   * dark, and every other group is out while it is lit. One rule alone would leave the user
-   * with a list that only ever grows. */
-  const off = sheet.match(/\[data-eva-wx-tree='off'\]\s*\[data-eva-wx-group='on'\]\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-  if (!/display:\s*none/.test(off)) return 'the dark state does not take the group out of the list'
-  const on = sheet.match(/\[data-eva-wx-tree='on'\]\s*>\s*:not\(\[data-eva-wx-group='on'\]\)\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-  if (!/display:\s*none/.test(on)) return 'the lit state does not take the other groups out of the list'
-  /* Every rule that names a group or a header must also name the tree, so a group can never be
-   * hidden by the sheet alone -- the theme's own tag on the tree is part of the selector. */
-  const hideRules = sheet.match(/[^{}]*\[data-eva-wx-(?:group|head)[^{}]*\{/g) ?? []
-  const loose = hideRules.filter((rule) => !/\[data-eva-wx-tree=/.test(rule))
-  if (loose.length > 0) {
-    return `a group is hidden outside the tree the theme tagged: ${loose.join(' | ')}`
+  /* The one filtering rule: the tree tagged by the client, every row under it, and the rows the
+   * client did NOT tag. It is written (0,3,0) on purpose -- three parts beat a one-level
+   * CSS-Modules class without depending on sheet order. */
+  const hide = sheet.match(/\[data-eva-im-tree\][^{}]*\{([\s\S]*?)\}/)?.[1] ?? ''
+  const hideRule = sheet.match(/\[data-eva-im-tree\][^{}]*\{/)?.[0] ?? ''
+  if (!/display:\s*none/.test(hide)) return 'the filter has no hide rule'
+  if (!/\[data-row-key\]:not\(\[data-eva-im-row='on'\]\)/.test(hideRule)) {
+    return "the hide rule requires a tag that is only written on the rows that stay"
   }
-  /* Rounds 43-44's other half, which the user asked for by name (m00496: 不显示「微信会话」这个工作区
-   * 分组标题, 只显示该分组下的会话标题): the lit state also takes the group's own title row out, and
-   * with it the 2px the host keeps between a title and the row after it -- that gap has nothing to
-   * separate any more and would fold into the group's own top margin, pushing the group down. */
-  const head = sheet.match(/\[data-eva-wx-tree='on'\]\s*\[data-eva-wx-head='on'\]\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-  if (!/display:\s*none/.test(head)) return 'the lit state leaves the group title in the list'
-  const gap = sheet.match(/\[data-eva-wx-tree='on'\]\s*\[data-eva-wx-head='on'\]\s*\+\s*\*\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-  if (!/margin-top:\s*0/.test(gap)) return 'the 2px the host keeps under a title is left behind'
-  const groupBox = sheet.match(/\[data-eva-wx-tree='on'\]\s*\[data-eva-wx-group='on'\]\s*\{([\s\S]*?)\}/)?.[1] ?? ''
-  if (!/margin-top:\s*0/.test(groupBox)) return 'the group keeps the 4px it was given for a sibling below it'
-  /* Round 45: the Telegram half is gone, so its contract may not be left behind in the sheet. */
+  /* Rounds 43-44 shipped a whole family of group/header rules for the workspace switch. The
+   * filter needs none of them: an untagged row is hidden by the rule above, headers included. */
+  const groupRules = sheet.match(/[^{}]*\[data-eva-(?:wx|im)-(?:group|head)[^{}]*\{/g) ?? []
+  if (groupRules.length > 0) {
+    return `a group or header is styled outside the tree the theme tagged: ${groupRules.join(' | ')}`
+  }
+  /* Round 45/51: the contracts of the entries and the switch that were retired may not be left
+   * behind in the sheet. */
+  if (/data-eva-wx/.test(sheet)) return 'the retired WeChat switch contract is still styled'
   return !/data-eva-tg/.test(sheet) || 'the retired Telegram contract is still styled'
 })
 
@@ -862,7 +856,9 @@ checks.check('cli.11d', 'the client half owns exactly eleven effects', () => {
      工作区旁边的图标也改回来。」) withdrew that pair with the plugin and restored rounds 43-45's single
      switch. Renamed and rewritten every time, never added or split, so the count is unchanged.
      This round (2026-10-15) added nothing here either: the account gate is more lines inside
-     the tenth effect, not an eleventh one.
+     the tenth effect, not an eleventh one. Round 64 (2026-10-24) put the channel entries back
+     with the plugin -- twelve of them, one shared visibility rule -- again inside that same
+     tenth effect: also nothing added or split.
      (The host motion budget, which this file used to register as an eleventh, was retired after the
      round-51 snapshot this text came from.)
 
@@ -880,7 +876,7 @@ checks.check('cli.11d', 'the client half owns exactly eleven effects', () => {
   if (!/'evangelion: boot screen'/.test(client)) return 'the boot mask effect has no label'
   if (!/'evangelion: brand row zones'/.test(client)) return 'the brand row bridge has no label'
   if (!/'evangelion: workspace pins'/.test(client)) return 'the workspace pin effect has no label'
-  if (!/'evangelion: wechat workspace switch'/.test(client)) return 'the WeChat switch has no label'
+  if (!/'evangelion: im channel filters'/.test(client)) return 'the channel filters have no label'
   if (!/'evangelion: centred panels'/.test(client)) return 'the panel-centring effect has no label'
   if (!/applyPluginToggle\(ctx\)/.test(client)) return 'the vendored toggle is never applied'
   return /applySessionEvaStatus\(ctx\)/.test(client) || 'the vendored session rail is never applied'
@@ -1268,94 +1264,108 @@ checks.check('cli.25', 'the workspace pin control is injected and moves rows off
    conversations dsh-im opens live in 未分组, which renders five rows and keeps the rest behind it;
    and the labels go through the locale service. Nothing is persisted and nothing is inserted,
    moved or deleted: a view is attributes on the rows plus rules in the sheet. */
-checks.check('cli.26', 'the WeChat entry switches one workspace through the official controls', () => {
-  /* Round 51 (2026-10-12, m01147「DSH-IM不好用！把DSH-Wechat给我换回来，并且把工作区旁边的图标也改
-     回来。」): the two channel filters of rounds 48/49 are withdrawn and this switch is back, so the
-     assertions below are rounds 43-47's, restored with the code they pin, plus one that the retired
-     channel-filter contract is gone. */
+checks.check('cli.26', 'the channel entries filter the session tree through the official controls', () => {
+  /* Round 41 (2026-10-09) built the first Telegram conversation filter, round 42 added a 微信
+     one beside it, rounds 43-45 turned the 微信 one into a workspace switch, round 48 returned
+     the pair to filtering the channels dsh-im stamps, round 51 withdrew the pair with the
+     plugin, and round 64 (2026-10-24, user's words 「我已切回 dsh-im，恢复工作区侧边栏中与之对应
+     的按钮。再按同一实现方式，为其他平台补充对应按钮。最后统一实现显示逻辑：平台已接入时显示该
+     按钮，未接入时隐藏该按钮。」) puts them back -- one per channel the plugin ships, twelve of
+     them, all on ONE visibility rule.
+     What is held here: the entries are inserted into the official 工作区 row before its search
+     slot, one per channel in the plugin's own order; a view marks the rows it keeps and keeps
+     nothing else; a folded group is unfolded and a group's Sessions behind the official
+     show-more are driven through that same official control, one click per frame; the labels go
+     through the locale service; and an entry exists only while its own channel answered yes.
+     Nothing is persisted and nothing is inserted, moved or deleted in the tree: a view is
+     attributes on the rows plus the one rule in the sheet. */
   if (!/var SLOT_SELECTOR = "\[data-slot='sidebar\.workspaces'\]"/.test(client)) {
-    return 'the switch does not key on the official workspaces slot'
+    return 'the entries do not key on the official workspaces slot'
   }
   if (!/var MARK_SELECTOR = "\[data-slot='sidebar\.workspaces\.directoryFlow'\]"/.test(client)) {
-    return 'the switch does not key the header row on the official marker slot'
+    return 'the entries do not key the header row on the official marker slot'
   }
-  if (!/var WX_GROUP_LABEL = '微信会话'/.test(client)) {
-    return 'the switch does not name the workspace by the title its plugin enforces'
+  /* The channel table is the plugin's own list: SESSION_CHANNEL_LABELS in
+     src/channels/shared/session-channel-labels.mjs, twelve channels. Each entry carries both
+     spellings of its label (the plugin accepts either), and the route it is asked on. */
+  const routes = client.match(/rpc: 'dsh-im\/[a-z]+'/g) ?? []
+  if (routes.length !== 12) return `${routes.length} channel routes, expected 12`
+  if (!/id: 'weixin', leads: \['微信 · ', 'WeChat · '\]/.test(client)) {
+    return 'the 微信 entry does not keep both label spellings the plugin accepts'
   }
-  if (!/var WORKSPACE_PREFIX = 'workspace:'/.test(client)) {
-    return 'the switch does not read the official workspace row prefix'
+  if (!/var SESSION_PREFIX = 'session:'/.test(client)) return 'the filter does not read the session row prefix'
+  if (!/var WORKSPACE_PREFIX = 'workspace:'/.test(client)) return 'the filter does not read the workspace row prefix'
+  if (!/var OVERFLOW_PREFIX = 'overflow:'/.test(client)) return 'the filter does not read the show-more row prefix'
+  if (!/var CHANNEL_ATTR = 'data-dsh-im-session-channel'/.test(client)) {
+    return 'the filter does not read the channel stamp dsh-im writes on a session title'
   }
-  if (!/key === WORKSPACE_PREFIX\) continue/.test(client)) {
-    return 'the switch would match the Ungrouped bucket as the workspace'
+  if (!/cell\.getAttribute\(CHANNEL_ATTR\) === channel\.id/.test(client)) {
+    return 'the filter does not trust the channel stamp before it reads the title'
   }
-  /* Round 62 (2026-10-17, m00001「现在Yu工作区变成按微信按钮才能出现了」): round 61's 'Yu'
-     alias is withdrawn, because it made this entry own the user's own Yu workspace -- the
-     group was hidden while the button was off and was the only group left while it was on.
-     The assertion is now the strict single-name form, and it also pins the alias OUT: the
-     row text must still be TRIMMED before comparing (a row carrying whitespace must match),
-     the comparison must name the label variable rather than a typed literal, and nothing
-     else may be accepted as this group's name. */
-  if (!/var title = row\.textContent\.replace\(\/\^\[ \\t\\r\\n\]\+\/, ''\)\.replace\(\/\[ \\t\\r\\n\]\+\$\/, ''\)/.test(client)) {
-    return 'the switch does not trim the row text before comparing it'
+  /* A view marks the rows it keeps; every other row is untagged and hidden by the sheet. */
+  if (!/if \(key\.indexOf\(SESSION_PREFIX\) === 0 && isChannel\(row, channel\)\)/.test(client)) {
+    return 'a view would mark a row that is not a Session of the selected channel'
   }
-  if (!/if \(title !== WX_GROUP_LABEL\) continue/.test(client)) {
-    return 'the switch does not compare the trimmed title against the enforced workspace name'
+  if (!/if \(row\.getAttribute\(ROW_ATTR\) !== 'on'\) row\.setAttribute\(ROW_ATTR, 'on'\)/.test(client)) {
+    return 'a view does not write its staying tag on the rows it keeps'
   }
-  if (/WX_GROUP_ALIAS/.test(client) || /title !== 'Yu'/.test(client)) {
-    return 'the switch still accepts a second name for this group, so it can take over Yu'
+  if (!/host\.setAttribute\(TREE_ATTR, channel\.id\)/.test(client) || !/host\.removeAttribute\(TREE_ATTR\)/.test(client)) {
+    return 'the view cannot put the list back the way it found it'
   }
-  if (!client.includes(`scope.querySelectorAll('[data-row-key^="' + WORKSPACE_PREFIX + '"]')`)) {
-    return 'the switch does not walk the rows by their official key attribute'
+  if (!/for \(i = 0; i < rows\.length; i\+\+\) rows\[i\]\.removeAttribute\(ROW_ATTR\)/.test(client)) {
+    return 'the rows of the previous view are never untagged'
   }
-  if (!/function wxGroup\(host\)/.test(client) || !/node\.parentElement !== host/.test(client)) {
-    return 'the switch does not walk up to the tree child that holds the group'
+  if (!/function openStep\(host\)/.test(client) || !/aria-expanded/.test(client) || !/\.click\(\)/.test(client)) {
+    return 'a folded group is not unfolded through its own header'
   }
-  if (!/function wxHeadBox\(group, row\)/.test(client)) {
-    return 'the switch cannot take the group header off without its conversations'
+  if (!/function pump\(\)/.test(client) || !/requestAnimationFrame/.test(client) || !/CLICK_LIMIT/.test(client)) {
+    return 'the official show-more is not driven one click per frame'
   }
-  if (!/aria-expanded/.test(client) || !/head\.click\(\)/.test(client)) {
-    return 'the switch does not unfold a folded group through its own header'
-  }
-  if (!/locale\.register\(NS, DICT\)/.test(client)) {
+  if (!/locale\.register\(NS, DICT\)/.test(client) || !/var NS = 'eva-im-filter'/.test(client)) {
     return 'the entry labels are not registered with the locale service'
   }
   if (!/var sessions = ctx\.get\('sessions'\)/.test(client) || !/list\.subscribe\(schedule\)/.test(client)) {
-    return 'the switch never follows the session list'
+    return 'the filter never follows the session list'
   }
   if (!/attributeFilter: \['data-row-key'\]/.test(client)) {
-    return 'the switch does not watch the row key, so its own writes would re-enter it'
+    return 'the filter does not watch the row key, so its own writes would re-enter it'
   }
-  if (!/data-eva-wx-button/.test(client)) return 'the entry carries no contract attribute'
-  if (!/var state = wxOn \? 'on' : 'off'/.test(client)) {
-    return 'the switch does not write both directions of its tree attribute'
-  }
-  if (!/host\.removeAttribute\(WX_TREE_ATTR\)/.test(client) || !/tagged\.removeAttribute\(GROUP_ATTR\)/.test(client)) {
-    return 'the switch cannot put the list back the way it found it'
+  if (!/data-eva-im-button/.test(client)) return 'the entry carries no contract attribute'
+  if (!/var state = on \? 'on' : 'off'/.test(client)) {
+    return 'the entry does not write both directions of its state'
   }
   if ((client.match(/setAttribute\('title'/g) ?? []).length !== 1) {
     return 'the entry sets hover wording again (only the pin button may carry a title)'
   }
-  /* Round 45: the retired contract and its machine may not be left behind in the client half. */
-  if (/data-eva-im/.test(client)) return 'the retired channel-filter contract is still written'
+  if (/data-eva-wx/.test(client)) return 'the retired WeChat switch contract is still written'
   if (/data-eva-tg/.test(client)) return 'the retired Telegram contract is still written'
-  /* Round 60 (2026-10-15, user's words: 「没有连接微信的时候隐藏按钮图标」). The entry is in the
-   * row only while the 微信 channel holds an account, and both halves of that rule are pinned
-   * here because either one alone is a different behaviour: the gate has to ask, and the entry
-   * has to be ABSENT (not merely invisible) while the answer is no. What counts as an account is
-   * the plugin's own criterion -- its settings page branches on status.accounts.length being 0
-   * -- so the check reads the same field rather than inventing a second definition. */
-  if (!/var WX_STATUS_PATH = '\/\.dsh-wechat-plugin\/status'/.test(client)) {
-    return 'the gate does not ask the route the plugin itself reads'
+  /* Round 64's one rule, and the only word on visibility: an entry is in the row exactly while
+     its own channel answered yes. Both halves are pinned because either alone is a different
+     behaviour -- the gate has to ask, and the entry has to be ABSENT (not merely invisible)
+     while the answer is no. What counts as an account is the plugin's own criterion: a token-bot
+     channel answers { bots: [...] } and its reader keeps a record only when botId is a string;
+     office answers its own status object whose 'configured' is the same fact. */
+  if (!/var CHANNEL_STATUS = 'connection\.status'/.test(client)) return 'the gate does not ask the status method'
+  if (!/rpc\.call\('\/api', channel\.rpc, \{ method: CHANNEL_STATUS, payload: \{\} \}\)/.test(client)) {
+    return 'the gate does not ask that channel its own route'
   }
-  if (!/Array\.isArray\(accounts\)/.test(client) || !/return accounts\.length > 0/.test(client)) {
-    return 'the gate does not count the accounts array the plugin reports'
+  if (!/Array\.isArray\(bots\)/.test(client) || !/typeof bot\.botId === 'string'/.test(client)) {
+    return 'the gate does not count an account the way the plugin does'
   }
-  if (!/if \(!wxLive\) \{[\s\S]{0,180}removeChild\(existing\)/.test(client)) {
+  if (!/typeof value\.configured === 'boolean'/.test(client)) {
+    return 'the gate cannot read the status shape office answers'
+  }
+  if (!/return live\[channel\.id\] === true/.test(client)) {
+    return 'the visibility rule is not the one rule every entry shares'
+  }
+  if (!/if \(visible\(channel\) !== true\) \{[\s\S]{0,220}removeChild\(button\)/.test(client)) {
     return 'the entry is left in the row while the channel has no account'
   }
-  if (!/if \(!answer\) wxOn = false/.test(client)) {
-    return 'a vanished account leaves the switch lit over a filtered list'
+  if (!/if \(answer === false && selected\(\) === channel\)/.test(client)) {
+    return 'a vanished account leaves the view lit over a filtered list'
   }
+  if (!/var STATUS_INTERVAL = 60000/.test(client)) return 'the gate never re-asks'
+  if (!/var statusPending = \{\}/.test(client)) return 'one slow route would hold every other answer back'
   if (!/document\.removeEventListener\('visibilitychange', onVisible\)/.test(client) ||
     !/window\.removeEventListener\('focus', refreshStatus\)/.test(client) ||
     !/clearInterval\(statusTimer\)/.test(client)) {

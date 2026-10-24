@@ -4318,3 +4318,104 @@ desktop 那份，`ui-settings-account` 已 `disabled: false`）；探针 `C:\Wor
 - **桌面壳不能拿 Web 实例验收键盘路径**：`native=true` 那句 `if (native) return`（`client.js:813`）
   让合成 keydown 一律作废。凡是「靠派发按键触发宿主命令」的写法，必须在 `runtime === 'desktop'`
   下另找入口，或者直接调注册表。
+
+---
+
+## 66. 第六十九轮：SYSTEM 在对话界面复活 + 三处「更多」在主题侧收起（D102）（2026-10-24 追加）
+
+### 66.1 改的是什么
+
+只改 EVA 自己的两边：`src/model-effort-picker.js` + `src/client.js`（SYSTEM 那条点击链），
+以及 `src/theme.css` 新增 D102 六条规则（三处「更多」的触发器）。
+**没有改 profile、没有改官方安装目录、没有 disable 任何官方 entry** —— 用户本轮逐字要求
+「不能改动DSH本体，只能改EVA插件」；第一版藏在 `cordis.patch.yml` 里禁用
+`entry-customization`，已全部撤回（profile 复原、备份删除）。
+
+### 66.2 SYSTEM 只在对话界面失灵：三段链路
+
+1. 宿主判定「当前有没有模态」是**存在性**的，不看可见性。`dsh-web-frontend` 内的
+   `modalSelector` 就是 `[role="dialog"][aria-modal="true"], [role="menu"]`，
+   `dsh-client-shortcuts/lib/client.js:1405`（键盘路径）与 `pressSettingsShortcut` 都取
+   **文档里最后一个**匹配、读它的 `data-shortcut-modal`，空则 `'other'`。
+2. EVA 的模型/推理选择器常驻 DOM，关闭时靠 CSS 折叠成 0×0，而 `.eva-mep__scroll`
+   一直挂着 `role="menu"`（旧代码在 model 551 行、effort 902 行写死）。于是对话界面里
+   host 读到「有个 other 作用域的菜单开着」，EVA 拒绝 `registry.invoke`，退回合成
+   `keydown`；桌面构建的键盘桥是 `native=true`，合成事件被静默丢弃 ⇒ 死点击。
+   插件页没有 composer、popover 随之卸载，同一个点击就通 —— 这正是报告里的不对称。
+3. 第二道门在桌面档同时失效：`ui-settings-account` 启用后 `settings.launcher` 槽里是
+   账号卡，`LAUNCHER = "[data-slot='settings.launcher'] > button"` 失配（见 §65.2）。
+
+### 66.3 修法：角色只在菜单活着时声明 + 读模态时跳过不可见节点
+
+```js
+/* src/model-effort-picker.js —— 角色是「活着的菜单」的声明，不是容器的静态属性 */
+function setMenuRole(on) {
+  var scroll = instance.scroll
+  if (!scroll) return
+  if (on) scroll.setAttribute('role', 'menu')
+  else scroll.removeAttribute('role')
+}
+/* setOpen 里：setMenuRole(want)；两处创建处改为 instance.scroll = scroll */
+```
+
+```js
+/* src/client.js modalScopeOf —— 反向遍历，跳过没有布局盒的匹配 */
+for (var i = nodes.length - 1; i >= 0; i -= 1) {
+  var node = nodes[i]
+  if (node.getClientRects().length === 0) continue
+  var scope = node.getAttribute('data-shortcut-modal')
+  return scope === null || scope === '' ? 'other' : scope
+}
+return null
+```
+
+第一层治本（不再向 host 谎报菜单），第二层防守（别的插件犯同样的错也不会挡住 SYSTEM）。
+顺带修好一个同源缺陷：宿主自带的 `Ctrl+Alt+,` 在对话界面原本也打不开设置。
+
+### 66.4 三处「更多」：只藏触发器，菜单随入口一起消失
+
+三处**不是同一个 DOM 形状**（`app.asar` @ 0.2.1-rc.3）：
+
+| 位置 | 真身 | 触发器属性 |
+| --- | --- | --- |
+| 左栏 | `dsh-client-ui-sidebar` 的 `PanelMoreMenu`，`nav[aria-label='全局面板']` 内 | `button.panelRow[aria-haspopup='menu'][aria-label=t('panels.more')]`，外面套一层 Tooltip 的 `span`（`nav > span > button`） |
+| 会话头 | `dsh-client-ui-conversation` 的 `ViewsMoreMenu`，在 `conversation.session.header` 槽内 | `aria-label` = 「更多会话视图」；当前视图折进菜单时变成「更多会话视图 · {名}」⇒ 前缀匹配 |
+| 右栏 | `dsh-client-ui-sidebar-right` 的 `GuideMoreMenu`，一张卡片 | `button.entry[aria-haspopup='menu'][aria-label='更多工具']`，挂在 `[data-sidebar-right-guide]` 根下 |
+
+三处菜单行都来自 `dsh-client-ui-entry-customization`（「浏览更多插件」「创建你的插件」），
+**菜单只能由这三枚触发器打开**，没有快捷键、没有第二条入口 —— 所以藏触发器等于藏菜单。
+选择器只用官方 `data-slot` / `data-sidebar-right-guide` 与官方 i18n 文案（中英两本字典，
+其余语言回落英文），不碰 CSS-Modules 哈希类名：
+
+```css
+[data-slot='sidebar'] nav button[aria-haspopup='menu'][aria-label='更多'],
+[data-slot='sidebar'] nav button[aria-haspopup='menu'][aria-label='More'],
+[data-slot='conversation.session.header'] button[aria-haspopup='menu'][aria-label^='更多会话视图'],
+[data-slot='conversation.session.header'] button[aria-haspopup='menu'][aria-label^='More conversation views'],
+[data-sidebar-right-guide] button[aria-haspopup='menu'][aria-label='更多工具'],
+[data-sidebar-right-guide] button[aria-haspopup='menu'][aria-label='More tools'] {
+  display: none !important;
+}
+```
+
+失配后果：DSH 改名或改槽位 ⇒ 规则不命中 ⇒「更多」原样露出（回到官方行为），
+不会误藏别的按钮 —— 每条都同时要求 `aria-haspopup='menu'` 与具体文案；真机
+注入反例验证过：「更多操作」「更多会话视图操作」（无 `aria-haspopup`）、「更多」（无
+`aria-haspopup`）都不受影响。
+
+### 66.5 真机验证（desktop-probe，EVA 已装载，账户卡形态）
+
+- 对话界面点 SYSTEM → 设置开；再点 → 关；`data-shortcut-modal='settings'`。
+- 插件页点 SYSTEM → 设置开（未回归）；品牌三区不变。
+- 模型选择器打开 → `role="menu"`、3 行 `menuitemradio`、185×188；Esc 后 role 移除。
+- 左栏 nav：`插件`（D68 藏）、`自动化任务`（36px 可见）、`更多`（none）。
+- 右栏 guide：`更多工具` none；`选择 Shell`・`新建终端` 等其余卡片照旧。
+- 其余菜单按钮（选择工作区、选择 Shell、选择添加插件方式）全部仍可见。
+- `node --test` 27/27；`node tools/verify.mjs` 审计通过，`client.js` 与 `src/` 同步。
+
+### 66.6 回滚
+
+- 三处「更多」：删掉 D102 那六条规则 → 三处原样回来（菜单本来就在，只是重新有了入口），
+  刷新页面即生效，无需重建、无需重启。
+- SYSTEM：回滚 `setMenuRole` 与 `modalScopeOf` 的循环 → 回到「对话界面死点击」的旧状态，
+  其余不受影响。

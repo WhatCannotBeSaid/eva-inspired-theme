@@ -11,7 +11,7 @@ const read = path => readFileSync(join(root, path), 'utf8')
 // Execute production closures, not reimplementations. Moving a closure requires an
 // explicit fixture update; missing boundaries fail rather than silently testing a fake.
 function clientSource() {
-  return ['src/client.js', ...['glass', 'pins', 'wechat', 'panels'].map(n => `src/runtime/${n}.js`)]
+  return ['src/client.js', ...['glass', 'pins', 'im', 'panels'].map(n => `src/runtime/${n}.js`)]
     .filter(p => existsSync(join(root, p))).map(read).join('\n')
 }
 function between(source, start, end) {
@@ -146,74 +146,94 @@ test('S2: queued workspace moves cannot start after disposal', async () => {
   assert.deepEqual(sent, ['one'])
 })
 
-function statusHarness(fetch, options = {}) {
-  const clock = clocks()
-  const answers = []
+function statusHarness(options = {}) {
   const source = clientSource()
+  const channels = vm.runInNewContext(`${between(source, '        var CHANNELS = [', '        /* Round 50, unchanged since')}; CHANNELS`)
+  const status = between(source, '        var CHANNEL_STATUS =', '        /* One question a minute')
   const code = between(source, '        function holdsAccount(result)', '        function onVisible()')
-  const api = vm.runInNewContext(`var disposed = false, wxLive = false, wxOn = false, statusPending = false;
-    var statusRequest = null, statusGeneration = 0;
-    var WX_STATUS_PATH = '/status', STATUS_TIMEOUT_MS = 10000;
-    function schedule() { answers.push(wxLive) }
+  const calls = []
+  const answers = []
+  const api = vm.runInNewContext(`var disposed = false, mode = 0, clicks = 0, action = 0;
+    var live = {}, statusPending = {};
+    var ctx = { get(name) { return name === 'connection' ? connection : null } };
+    function selected() { return mode === 0 ? null : CHANNELS[mode - 1] }
+    function schedule() { answers.push('schedule') }
+    function paint() { answers.push('paint') }
+    function pump() { answers.push('pump') }
+    ${status}
     ${code}
-    ({ refresh: refreshStatus, pending() { return statusPending },
-       dispose() { disposed = true; if (typeof cancelStatus === 'function') cancelStatus() } })`, {
-    fetch, document: { hidden: options.hidden === true }, answers,
-    AbortController: options.noAbort ? undefined : AbortController,
-    setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    CHANNELS = channels;
+    ({ refresh: refreshStatus, holds: holdsAccount,
+       accept(channel, answer) { acceptStatus(channel, answer) },
+       shown(channel) { return visible(channel) },
+       mode(value) { if (value !== undefined) mode = value; return mode } })`, {
+    connection: { rpc: { call(endpoint, route, body) { calls.push({ endpoint, route, body }); return options.answer ? options.answer(route, calls.length) : null } } },
+    answers, channels, document: { hidden: options.hidden === true },
   })
-  return { api, clock, answers }
+  return { api, calls, answers, channels }
 }
 
-test('S3: hanging fetch releases latch; late answer cannot overwrite newer status', async () => {
-  let release
-  let calls = 0
-  const h = statusHarness(() => ++calls === 1 ? new Promise(r => { release = r }) : Promise.resolve({ ok: true, json: () => Promise.resolve({ accounts: [] }) }), { noAbort: true })
-  h.api.refresh(); assert.equal(h.api.pending(), true)
-  h.clock.fire(); assert.equal(h.api.pending(), false)
-  h.api.refresh(); await flush(); assert.equal(calls, 2)
-  release({ ok: true, json: () => Promise.resolve({ accounts: [{}] }) })
-  await flush(); assert.deepEqual(h.answers, [])
-  assert.equal(h.clock.timers.size, 0)
+test('S3: one question per channel per pass, re-asked only once the last answer settles', async () => {
+  let release = []
+  const h = statusHarness({ answer: () => new Promise(resolve => release.push(resolve)) })
+  assert.equal(h.channels.map(c => c.rpc).join(','), 'dsh-im/weixin,dsh-im/feishu,dsh-im/dingtalk,dsh-im/wecom,dsh-im/qq,dsh-im/slack,dsh-im/telegram,dsh-im/discord,dsh-im/whatsapp,dsh-im/imessage,dsh-im/matrix,dsh-im/office')
+  h.api.refresh()
+  assert.equal(h.calls.length, 12)
+  assert.equal(h.calls[0].endpoint, '/api')
+  assert.equal(h.calls[0].route, 'dsh-im/weixin')
+  assert.equal(h.calls[0].body.method, 'connection.status')
+  h.api.refresh(); assert.equal(h.calls.length, 12)
+  release.forEach(resolve => resolve({ ok: true, value: { bots: [{ botId: 'one' }] } }))
+  await flush()
+  assert.equal(h.api.shown(h.channels[0]), true)
+  assert.equal(h.answers.join(','), Array(12).fill('schedule').join(','))
+  h.api.refresh(); assert.equal(h.calls.length, 24)
+  release.forEach(resolve => resolve({ ok: true, value: { bots: [{ botId: 'one' }] } }))
+  await flush()
+  assert.equal(h.answers.join(','), Array(12).fill('schedule').join(','))
 })
 
-test('S3: timeout includes response.json, disposal aborts and rejects stale completion', async () => {
-  let signal, body
-  const h = statusHarness((url, init) => {
-    signal = init.signal
-    return Promise.resolve({ ok: true, json: () => new Promise(r => { body = r }) })
-  })
-  h.api.refresh(); await flush(); h.clock.fire()
-  assert.equal(h.api.pending(), false)
-  assert.equal(signal.aborted, true)
-  h.api.refresh(); await flush(); h.api.dispose()
-  assert.equal(signal.aborted, true)
-  body({ accounts: [{}] }); await flush()
-  assert.deepEqual(h.answers, [])
-  assert.equal(h.clock.timers.size, 0)
-})
-
-for (const [name, fetch] of [
+for (const [name, answer] of [
   ['throw', () => { throw Error('offline') }],
   ['reject', () => Promise.reject(Error('offline'))],
-  ['HTTP failure', () => Promise.resolve({ ok: false })],
-  ['invalid JSON', () => Promise.resolve({ ok: true, json: () => Promise.reject(Error('JSON')) })],
-  ['malformed body', () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })],
-]) test(`S3: ${name} preserves last answer and cleans up`, async () => {
-  const h = statusHarness(fetch)
+  ['envelope failure', () => ({ ok: false })],
+  ['no promise', () => null],
+  ['empty object', () => ({ ok: true, value: {} })],
+  ['unknown shape', () => ({ ok: true, value: { bots: 'yes' } })],
+]) test(`S3: ${name} keeps the last word`, async () => {
+  const h = statusHarness({ answer })
+  h.api.accept(h.channels[0], true)
+  const before = h.answers.length
   h.api.refresh(); await flush()
-  assert.equal(h.api.pending(), false)
-  assert.equal(h.clock.timers.size, 0)
-  assert.deepEqual(h.answers, [])
+  assert.equal(h.api.shown(h.channels[0]), true)
+  assert.equal(h.answers.length, before)
 })
 
-test('S3: hidden page skips requests, real answers update only on change', async () => {
-  let calls = 0
-  const fetch = () => { calls++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ accounts: [{}] }) }) }
-  const hidden = statusHarness(fetch, { hidden: true }); hidden.api.refresh(); assert.equal(calls, 0)
-  const h = statusHarness(fetch); h.api.refresh(); h.api.refresh(); await flush()
-  assert.equal(calls, 1); assert.deepEqual(h.answers, [true])
-  h.api.refresh(); await flush(); assert.deepEqual(h.answers, [true])
+test('S3: hidden page asks nothing', () => {
+  const h = statusHarness({ answer: () => ({ ok: true, value: { bots: [{ botId: 'one' }] } }), hidden: true })
+  h.api.refresh(); assert.equal(h.calls.length, 0)
+})
+
+test('S3: a definite empty takes the entry away, and a lit view leaves with it', () => {
+  const h = statusHarness()
+  h.api.accept(h.channels[2], true)
+  h.api.mode(3)
+  assert.equal(h.api.mode(), 3)
+  h.api.accept(h.channels[2], false)
+  assert.equal(h.api.shown(h.channels[2]), false)
+  assert.equal(h.api.mode(), 0)
+})
+
+test('S3: the two answer shapes the channels use', () => {
+  const h = statusHarness()
+  assert.equal(h.api.holds({ ok: true, value: { bots: [] } }), false)
+  assert.equal(h.api.holds({ ok: true, value: { bots: [{ botId: 'one' }, { botId: '' }] } }), true)
+  assert.equal(h.api.holds({ ok: true, value: { bots: [{ botId: '' }] } }), false)
+  assert.equal(h.api.holds({ ok: true, value: { configured: true } }), true)
+  assert.equal(h.api.holds({ ok: true, value: { configured: false } }), false)
+  assert.equal(h.api.holds({ ok: false }), null)
+  assert.equal(h.api.holds(null), null)
+  assert.equal(h.api.holds({ ok: true, value: { state: 'idle' } }), null)
 })
 
 test('S5: keyboard group action retains raw provider ID', () => {
@@ -285,14 +305,14 @@ test('S7: plugin toggle skips unrelated mutations, discovers and restores remoun
   api.dispose(); api.onMutations(irrelevant); assert.equal(api.calls(),5)
 })
 
-test('S7: WeChat scans only workspace rows once per view pass', () => {
-  const code = between(clientSource(), '        function wxGroup(host)', '        /* What gets hidden')
-  let enumerated=0
-  const host={querySelectorAll(selector){assert.equal(selector,'[data-row-key^="workspace:"]'); enumerated++; return [row]}}
-  const group={parentElement:host}
-  const row={parentElement:group,textContent:' 微信会话 ',getAttribute:()=> 'workspace:wx'}
-  const match=vm.runInNewContext(`${code}; wxGroup(host)`, {host,WORKSPACE_PREFIX:'workspace:',WX_GROUP_LABEL:'微信会话',keyOf:row=>row.getAttribute('data-row-key')})
-  assert.equal(match.group,group); assert.equal(match.head,row); assert.equal(enumerated,1)
+test('S7: an entry is drawn only after a yes -- no answer draws nothing', () => {
+  const h = statusHarness()
+  assert.equal(h.answers.length, 0)
+  assert.equal(h.api.shown(h.channels[10]), false)
+  h.api.accept(h.channels[10], true)
+  assert.equal(h.api.shown(h.channels[10]), true)
+  h.api.accept(h.channels[10], null)
+  assert.equal(h.api.shown(h.channels[10]), true)
 })
 
 test('S6: pin and status fallback admit outside mutations until scoped rows return', () => {

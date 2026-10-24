@@ -163,14 +163,15 @@ with them. The sidebar's own view-options menu is left where the host puts it.
   insert-before API, so it survives a restart — and, unlike the pin set, it also
   survives removing the theme. On the workspace row it sits in the row's own action
   group, so it takes the same 15px seam as the two official buttons beside it.
-- A **WeChat workspace switch** on the 「工作区」 row, on the same line as Search and the
-  view options: one click leaves only the workspace `dsh-wechat-plugin` creates — its
-  conversations, without that workspace's own group header — and another click puts the
-  official list back. It only tags rows and stores nothing, and it has nothing to show
-  until such a workspace exists. The button itself is in the row only while the channel
-  holds an account: it asks `dsh-wechat-plugin`'s own status route, and an unbound WeChat
-  takes the button away rather than offering one that leads nowhere. A failed question
-  keeps the last answer.
+- **Channel filters** on the 「工作区」 row, on the same line as Search and the view
+  options: one entry per channel `@xmanrui/dsh-im` ships — twelve of them, WeChat,
+  Feishu, DingTalk, WeCom, QQ, Slack, Telegram, Discord, WhatsApp, iMessage, Matrix and
+  AI Office, in the plugin's own order. One click leaves only that channel's
+  conversations and hides every other row; another click puts the official list back. It
+  only tags rows and stores nothing. An entry is in the row only while its own channel is
+  connected: each asks that channel's status route (`dsh-im/<channel>`, method
+  `connection.status`), and a channel with no account has its entry taken away rather
+  than offering one that leads nowhere. A failed question keeps the last answer.
 - The vendored **non-official plugin switch**, on the installed group's header in the
   official Plugins page: tick which non-official plugins to disable, or to enable
   again. It switches bundle enablement only — it installs and uninstalls nothing.
@@ -241,7 +242,7 @@ Drop the entry from `dsh.profile.bundles` too if you added it there.
 index.js              host half — mounts, registers no route, plays nothing
 client.js             GENERATED browser bundle. Not tracked; build it. Do not edit.
 src/client.js         service and effect orchestration
-src/runtime/          private glass/pins/wechat/panels mounts
+src/runtime/          private glass/pins/im/panels mounts
 src/theme.css         the token layer
 cordis.patch.yml      the bundle-patch mount declaration
 build/                shipped assets + the two vendored client halves

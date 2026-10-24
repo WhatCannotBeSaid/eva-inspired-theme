@@ -387,6 +387,31 @@ var EvaModelEffortPicker = (function () {
       if (instance.open) place()
     }
 
+    /* The list is a menu only while the panel is open (2026-10-24, DSH 0.2.1-rc.3).
+     *
+     * The host decides whether a command may run by reading its modalSelector
+     * ('[role="dialog"][aria-modal="true"], [role="menu"]') and taking the LAST match
+     * in the document -- whether or not that node is on screen. A popover that stays
+     * mounted and keeps role="menu" while collapsed is therefore reported as the open
+     * modal, and every command whose modals list excludes that scope is dropped.
+     * Two of these pickers live in the composer, so while a conversation is on screen
+     * the top match was always one of ours: settings.open was refused there while
+     * the same keystroke still worked on every page without a composer. Measured on
+     * 0.2.1-rc.3: Ctrl+Alt+, opens settings from the plugins page and does nothing in
+     * a conversation; the same modal context is what EVA's SYSTEM click reads before
+     * it invokes the command, which is why that click went dead in conversations only.
+     *
+     * The role is a claim about a live menu, so it is carried only while the menu is
+     * live: added on open, removed on close. Rows keep role="menuitemradio" and the
+     * panel keeps role="dialog"; a closed panel carries no interactive semantics,
+     * which is also what a screen reader should hear. */
+    function setMenuRole(on) {
+      var scroll = instance.scroll
+      if (!scroll) return
+      if (on) scroll.setAttribute('role', 'menu')
+      else scroll.removeAttribute('role')
+    }
+
     instance.setOpen = function (next) {
       var want = next === true
       if (want === instance.open) return
@@ -394,6 +419,7 @@ var EvaModelEffortPicker = (function () {
       instance.open = want
       shell.anchor.setAttribute('data-eva-mep-open', want ? 'true' : 'false')
       shell.trigger.setAttribute('aria-expanded', want ? 'true' : 'false')
+      setMenuRole(want)
       if (want) {
         openInstance = instance
         /* Wire the dismiss listeners before painting: if painting ever throws,
@@ -548,7 +574,9 @@ var EvaModelEffortPicker = (function () {
     searchRow.appendChild(searchClear)
 
     var scroll = h('div', 'eva-mep__scroll')
-    scroll.setAttribute('role', 'menu')
+    /* The menu role is not set here: see setMenuRole in attachCommon. A collapsed
+     * popover that claimed role="menu" was read by the host as an open modal. */
+    instance.scroll = scroll
     scroll.setAttribute('aria-label', t('model.title'))
 
     shell.panel.appendChild(searchRow)
@@ -899,7 +927,8 @@ var EvaModelEffortPicker = (function () {
     empty.setAttribute('data-eva-mep-empty', '')
 
     var scroll = h('div', 'eva-mep__scroll')
-    scroll.setAttribute('role', 'menu')
+    /* Menu role is added on open only -- see setMenuRole in attachCommon. */
+    instance.scroll = scroll
 
     scroll.setAttribute('aria-label', t('effort.title'))
 

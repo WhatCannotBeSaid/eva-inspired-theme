@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 
 export const LOCAL_WALLPAPERS = 'out/wallpapers.local.json'
-export const CLIENT_FILES = ['src/runtime/glass.js', 'src/runtime/pins.js', 'src/runtime/wechat.js', 'src/runtime/panels.js', 'src/client.js']
+export const CLIENT_FILES = ['src/runtime/glass.js', 'src/runtime/pins.js', 'src/runtime/im.js', 'src/runtime/panels.js', 'src/client.js']
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 
 export function parseMode(args = []) {
