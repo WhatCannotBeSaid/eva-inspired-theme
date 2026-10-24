@@ -4,6 +4,18 @@ All notable changes to `eva-inspired-theme` are recorded here. The format follow
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-10-25
+
+### Fixed
+
+- **`README.zh.md` was never published.** It is referenced from `README.md`'s language
+  switch and from `README.zh.md`'s own header, but it was missing from `files` in
+  `package.json`, so every tarball pointed the Chinese link at a path that did not exist.
+  Added; the package now ships both editions.
+
+No runtime change: `client.js`, `src/`, `build/` and the patch are untouched
+(16/16 tests, 125/125 selfcheck assertions, build in sync).
+
 ## [1.2.0] — 2026-10-25
 
 ### Removed
