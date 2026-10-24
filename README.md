@@ -163,15 +163,6 @@ with them. The sidebar's own view-options menu is left where the host puts it.
   insert-before API, so it survives a restart — and, unlike the pin set, it also
   survives removing the theme. On the workspace row it sits in the row's own action
   group, so it takes the same 15px seam as the two official buttons beside it.
-- **Channel filters** on the 「工作区」 row, on the same line as Search and the view
-  options: one entry per channel `@xmanrui/dsh-im` ships — twelve of them, WeChat,
-  Feishu, DingTalk, WeCom, QQ, Slack, Telegram, Discord, WhatsApp, iMessage, Matrix and
-  AI Office, in the plugin's own order. One click leaves only that channel's
-  conversations and hides every other row; another click puts the official list back. It
-  only tags rows and stores nothing. An entry is in the row only while its own channel is
-  connected: each asks that channel's status route (`dsh-im/<channel>`, method
-  `connection.status`), and a channel with no account has its entry taken away rather
-  than offering one that leads nowhere. A failed question keeps the last answer.
 - The vendored **non-official plugin switch**, on the installed group's header in the
   official Plugins page: tick which non-official plugins to disable, or to enable
   again. It switches bundle enablement only — it installs and uninstalls nothing.

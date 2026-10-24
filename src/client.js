@@ -620,39 +620,6 @@
          list stays silent -- which matters, because each one is a durable write. */
       ctx.effect(() => deferEffect(() => mountWorkspacePins(ctx)), 'evangelion: workspace pins')
 
-      /* Round 64 (2026-10-24) -- the 工作区 row's channel entries are back, one per channel the
-         plugin ships, and they share ONE visibility rule.
-
-         User's words: 「我已切回 dsh-im，恢复工作区侧边栏中与之对应的按钮。再按同一实现方式，
-         为其他平台补充对应按钮。最后统一实现显示逻辑：平台已接入时显示该按钮，未接入时隐藏该
-         按钮。」 Three parts: the profile is back on @xmanrui/dsh-im 5.6.0, the row's entries
-         are back with it, and the pair round 49 had (Telegram + 微信) is widened to every
-         channel that plugin's settings page offers -- twelve of them, read from its own
-         SESSION_CHANNEL_LABELS rather than guessed.
-
-         What the entries do is round 42's filter, unchanged in kind: one view lit at a time,
-         pressing an entry shows that channel's conversations and hides every other row, pressing
-         it again puts the official list back. Round 43's workspace switch -- and dsh-wechat, the
-         switch's reason to exist -- is retired with the plugin: src/runtime/wechat.js is gone,
-         and its effect with it.
-
-         What is new is the visibility rule, and it is the SAME for every entry (user's words:
-         「平台已接入时显示该按钮，未接入时隐藏该按钮」). Rounds 50/57 split channels into
-         "keep the entry while the question goes unanswered" and "hide it", which made the row
-         depend on a per-channel default as much as on the channel. Now nothing is drawn before
-         the first answer, a definite "no account" takes the entry away, and an unanswered probe
-         keeps the last word -- so a route that disappears can only ever leave the row as it was,
-         never take an entry the user is using away. The answer is read from the channel's own
-         status route (dsh-im/<channel>, method connection.status), which is what that plugin's
-         settings page reads; the two shapes it answers in are tested in holdsAccount.
-
-         The entries are inserted into the 工作区 row before the search slot, in the plugin's own
-         channel order, and only the ones with an account are in the row: this profile shows two
-         (Telegram and 微信 -- the two channels it has configured), and the other ten come and go
-         with their own accounts. The button contract is round 49's, data-eva-im-*: the row was
-         never named after the channels of the day, and it stays that way. */
-      ctx.effect(() => deferEffect(() => mountImChannels(ctx)), 'evangelion: im channel filters')
-
       /* ------------------------------------------------------------------------
          Round 63 (2026-10-20) -- the four OFFICIAL composer panels centre on their
          trigger, the way the theme's own two pickers already do.
