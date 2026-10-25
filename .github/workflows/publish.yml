@@ -1,0 +1,59 @@
+name: publish
+
+# 只在 push 形如 v1.2.3 的 tag 时发布。
+#
+# 认证走 OIDC trusted publishing：工作流里没有任何 npm token，也不需要
+# NPM_TOKEN secret。npm 用 GitHub 签发的 OIDC 令牌核验「谁在发」。
+# 前提：npm 包设置 → Trusted Publisher 里登记
+#   Publisher            GitHub Actions
+#   Organization / User  WhatCannotBeSaid
+#   Repository           eva-inspired-theme
+#   Workflow filename    publish.yml
+#   Environment          （留空）
+# 登记本身需要一次通行密钥，之后发布就不再需要人工批准。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write # OIDC 必需
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 校验 tag 与 package.json 版本一致
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -e "process.stdout.write(require('./package.json').version)")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag v$tag 与 package.json 的 $pkg 不一致，拒绝发布" >&2
+            exit 1
+          fi
+
+      - name: 校验提交里的 client.js 与源码同步
+        run: node tools/build-client.mjs --check
+
+      - name: 校验 registry 上这个版本还没被占
+        run: |
+          pkg="$(node -e "process.stdout.write(require('./package.json').version)")"
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+            "https://registry.npmjs.org/eva-inspired-theme/$pkg")"
+          if [ "$code" = "200" ]; then
+            echo "eva-inspired-theme@$pkg 已在 registry 上，拒绝重复发布" >&2
+            exit 1
+          fi
+          echo "registry 上 $pkg 尚不存在（HTTP $code），继续"
+
+      - name: 发布到 npm
+        run: npm publish --provenance --access public
