@@ -4,6 +4,40 @@ All notable changes to `eva-inspired-theme` are recorded here. The format follow
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-10-25
+
+### Removed
+
+- **The vendored 插件一键启停 half is gone.** `dsh-disable-unofficial-plugins` is
+  published on its own now, so the theme no longer vendors, patches or ships any part
+  of it. `build/plugin-toggle.js` (66,968 bytes, v1.3.0) was deleted, along with the
+  builder's factory slice, `applyPluginToggle(ctx)` in `src/client.js`, the
+  `pluginToggleJs` template hole, the four checks that pinned the copy (selfcheck
+  `cli.19`, `cli.20`, `vend.1`, `cli.28`) and the `S7` runtime test. The effect count
+  `cli.11d` pins drops 10 to 8.
+
+  NOTICE section 3, both READMEs' licence tables and the builder banner were rewritten
+  to match. D82's host-bundle exclusion went with the copy: that protection only
+  existed because the switch sat inside this theme's own client bundle.
+
+### Action required
+
+- **Install the switch separately.** The 插件一键启停 button is no longer part of this
+  theme:
+
+  ```bash
+  dsh plugin --profile <profile> add dsh-disable-unofficial-plugins
+  ```
+
+  Without it the theme works exactly as before, minus the switch.
+
+### Changed
+
+- `client.js`: 2,262,671 to 2,213,383 characters (-49,288, -2.2%), all of it the
+  vendored block and its provenance comments. One fewer `ctx.effect` pair at load time.
+
+Verified: 121/121 selfcheck assertions (four retired with the copy), 15/15 runtime
+tests (S7 retired), build in sync.
 ## [1.2.1] — 2026-10-25
 
 ### Fixed

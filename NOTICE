@@ -61,17 +61,12 @@ This license grants no trademark rights, and nothing here implies endorsement by
 khara, inc., Hypergryph or DeepSeek.
 
 
-3. Vendored client halves — build/plugin-toggle.js, build/session-eva-status.js
+3. Vendored client half — build/session-eva-status.js
 ------------------------------------------------------------------------------
 
-Both files started as byte-for-byte copies of code from other plugins, not written
-for this theme (see the caveats at the end of this section). Both upstreams are MIT,
-and both are by the same author as this theme:
-
-  build/plugin-toggle.js
-    Upstream: dsh-disable-unofficial-plugins
-    Source:   https://github.com/WhatCannotBeSaid/dsh-disable-unofficial-plugins
-    License:  MIT
+The file started as a byte-for-byte copy of code from another plugin, not written
+for this theme (see the caveats at the end of this section). The upstream is MIT and
+by the same author as this theme:
 
   build/session-eva-status.js
     Upstream: dsh-session-eva-status v0.1.0
@@ -79,34 +74,33 @@ and both are by the same author as this theme:
     License:  MIT
 
 MIT requires its copyright notice and license text to travel with copies and
-substantial portions. Both upstream repositories carry them in their own LICENSE
-files; the full MIT text and the copyright line are section 1 of this
-repository's LICENSE. Neither of these two files carries a notice of its own, and
-both are inlined into the generated client.js, so if you redistribute either file
-or the bundle, carry this section with it.
+substantial portions. The upstream repository carries them in its own LICENSE
+file; the full MIT text and the copyright line are section 1 of this
+repository's LICENSE. The file carries no notice of its own, and it is inlined into
+the generated client.js, so if you redistribute the file or the bundle, carry this
+section with it.
 
-Two caveats, added 2026-10-09, the second amended 2026-10-10.
+One caveat, added 2026-10-09.
 build/session-eva-status.js (D78) is no longer a byte-for-byte copy: this repository
-patches three spots in its hot path — a frame-coalesced schedule, a
+patches spots in its hot path — a frame-coalesced schedule, a
 compare-then-write pin attribute, and cancelling the pending frame on dispose —
 because the upstream checkout is not available here to fix and re-vendor.
-build/plugin-toggle.js (D79) is patched in six spots. Five of them are
-performance-only and none of those five is behavioural: a reload sequence guard, a
-single-slot reload debounce, a compare-then-write button text, a throttled body
-redraw, and a Set-based reason dedupe. The sixth (D82) does change behaviour, and is
-the reason this file is no longer a faithful copy of upstream in any sense: upstream
-excludes only the switch's own package from the batch, but this copy is vendored
-into the theme's client bundle, so the theme itself is an unofficial plugin too and
-would otherwise be offered up for disabling — by a button that the theme's own
-bundle provides. The switch now excludes its host bundle as well. Both lists are at
-the top of the respective file; the original contract tripwires remain in cli.27
-and cli.28 of tools/selfcheck.mjs. Current patch inventory is maintained in
-both file headers and docs/optimization-s1-s10.md: status rail a-f (including
-scoped lookup, compositor breathing and fallback mutation wakeups), toggle a-g
-(including cached group discovery and unrelated-mutation filtering). New behavior
-is covered by tools/runtime.test.mjs. No pristine upstream checkout/hash was
-available for this change; this does not claim byte equivalence to upstream.
-Refreshing either file from upstream must re-apply and test the listed patches.
+The list is at the top of the file; the original contract tripwires remain in
+cli.23, cli.24 and cli.27 of tools/selfcheck.mjs. Current patch inventory is
+maintained in the file header and docs/optimization-s1-s10.md: status rail a-f
+(including scoped lookup, compositor breathing and fallback mutation wakeups). New
+behavior is covered by tools/runtime.test.mjs. No pristine upstream checkout/hash
+was available for this change; this does not claim byte equivalence to upstream.
+Refreshing the file from upstream must re-apply and test the listed patches.
+
+Removed 2026-10-25 (eva-inspired-theme 1.3.0): build/plugin-toggle.js was dropped
+from this repository. dsh-disable-unofficial-plugins is published on its own now,
+so the theme no longer vendors, patches or ships any part of it; install it
+separately to get the switch.
+
+D82's host-bundle exclusion went with it: that protection only existed because the
+vendored copy sat inside the theme's own client bundle, so it is now the standalone
+plugin's business, not the theme's.
 
 
 4. Background wallpapers — NOT redistributed, linked by URL

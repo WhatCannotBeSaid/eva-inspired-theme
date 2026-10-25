@@ -1,8 +1,8 @@
 /* The theme's own client glue: apply(), the mount order, and the exports map.
  *
  * tools/build-client.mjs interpolates this file VERBATIM into the generated
- * client.js, next to src/boot-screen.js (which defines mountBootScreen) and the two
- * vendored plugins (applyPluginToggle, applySessionEvaStatus). It closes over six
+ * client.js, next to src/boot-screen.js (which defines mountBootScreen) and the
+ * vendored session-status rail (applySessionEvaStatus). It closes over six
  * values the builder defines above it in the same factory: PLUGIN_ID, TOKENS, MANIFEST,
  * WALLPAPER_DECLARATIONS, CSS and BOOT_CSS. Nothing here is re-parsed by the
  * builder, so the code below is exactly the code that runs — which is the whole
@@ -390,14 +390,9 @@
          must be registered after it. */
       ctx.effect(() => mountBootScreen(), 'evangelion: boot screen')
 
-      /* The vendored plugin-toggle switch. It is the user's own plugin folded in, not
-         a re-implementation, and it registers its own disposer through ctx.effect —
-         so this is a single call, not an effect of ours. */
-      applyPluginToggle(ctx)
-
-      /* The vendored session-status rail (2026-10-09). Same rule as the switch above:
-         the user's own plugin, folded in byte for byte, registering its own disposer
-         through ctx.effect — one call, not an effect of ours.
+      /* The vendored session-status rail (2026-10-09). The user's own plugin, folded
+         in byte for byte, registering its own disposer through ctx.effect — one call,
+         not an effect of ours.
 
          It marks each session row's left rail (waiting on you / selected / unread
          completion) and paints the pinned row's title. Its cordis row carried exactly
@@ -406,15 +401,14 @@
          so nothing is passed here; the behaviour is the plugin's own row, unchanged.
 
          The three services it reads (uiSession, sessions, workspaces) are named in the
-         exports.inject below, so the loader hands it a context where they exist. It is
-         called after the switch only because the mount order reads top-down. */
+         exports.inject below, so the loader hands it a context where they exist. */
       applySessionEvaStatus(ctx)
 
       /* The composer's model seat (round 50, 2026-10-14): two independent controls
          where the official composer had one merged button. It is called for its own
          side effect -- the seat registration -- and registers through
          ctx.inject + slots.inject rather than ctx.effect, so it adds no effect to the
-         ten cli.11d counts. See mountModelSeat above for why it shadows at -1. */
+         eight cli.11d counts. See mountModelSeat above for why it shadows at -1. */
       mountModelSeat(ctx)
 
       /* Brand row, three zones -- the user's own mapping (2026-10-08, round 25, D68):
@@ -686,7 +680,9 @@
     /* uiSession / sessions / workspaces are the three services the vendored
        session-status rail reads (its own exports.inject names the same three); naming
        them here is what makes the loader wait for them, so apply() cannot run against a
-       context where they are still missing and throw. */
+       context where they are still missing and throw. 'remote' and 'locale' stay for
+       the model picker's official remote face and for the workspace rows' locale
+       lookup. */
     exports.inject = ['theme', 'remote', 'locale', 'uiSession', 'sessions', 'workspaces']
     exports.apply = apply
     return module.exports

@@ -25,7 +25,7 @@ function mountEffect(label, bindings) {
   const context = { get: () => ({}), inject() {}, effect(fn, name) { effects.set(name, fn) } }
   const exports = vm.runInNewContext(`(function () { var module = {exports:{}}; var exports = module.exports; ${clientSource()} })()`, {
     PLUGIN_ID: 'eva-inspired-theme', TOKENS: {}, MANIFEST: {},
-    applyPluginToggle() {}, applySessionEvaStatus() {}, ...bindings,
+    applySessionEvaStatus() {}, ...bindings,
   })
   exports.apply(context)
   assert.ok(effects.has(label), label)
@@ -190,29 +190,6 @@ test('S5/S8: changed effort content repositions once, including empty and transl
   assert.equal(f.instance.paint(), false)
   f.instance.destroyed=true; f.instance.sync()
   assert.equal(f.counts().placements, 3)
-})
-
-test('S7: plugin toggle skips unrelated mutations, discovers and restores remounted groups', () => {
-  const code = between(read('build/plugin-toggle.js'), '\t\tfunction touchesGroup(records)', '\t\tfunction schedule()')
-  const api = vm.runInNewContext(`const GROUP_SELECTOR='section[data-plugin-group="bundles"]';
-    let disposed=false, groupEl=null, slotEl=null, calls=0;
-    function schedule(){calls++} ${code}
-    ({touchesGroup, onMutations, calls:()=>calls, group(g,s){groupEl=g;slotEl=s}, dispose(){disposed=true}})`)
-  const node = (match=false) => ({nodeType:1,matches:()=>match,querySelector:()=>null})
-  const irrelevant = [{type:'childList',target:node(),addedNodes:[node()]}]
-  for(let i=0;i<1000;i++) api.onMutations(irrelevant)
-  assert.equal(api.calls(),0)
-  api.onMutations([{type:'childList',target:node(),addedNodes:[node(true)]}])
-  assert.equal(api.calls(),1)
-  const group={...node(true),isConnected:true,firstElementChild:node()}
-  api.group(group,{isConnected:true})
-  api.onMutations(irrelevant); assert.equal(api.calls(),1)
-  api.onMutations([{type:'childList',target:group,addedNodes:[]}]); assert.equal(api.calls(),2)
-  api.onMutations([{type:'childList',target:group.firstElementChild,addedNodes:[]}]); assert.equal(api.calls(),3)
-  group.isConnected=false; api.onMutations(irrelevant); assert.equal(api.calls(),4)
-  api.group(null,null)
-  api.onMutations([{type:'attributes',target:node(true)}]); assert.equal(api.calls(),5)
-  api.dispose(); api.onMutations(irrelevant); assert.equal(api.calls(),5)
 })
 
 test('S6: pin and status fallback admit outside mutations until scoped rows return', () => {

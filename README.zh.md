@@ -198,7 +198,7 @@ npm run verify
 | 项目文本 —— 本 README、`docs/`、`NOTICE`、`LICENSE` | CC BY-NC-SA 4.0 | 署名、附上许可链接、注明改动、保持非商业、相同方式共享。 |
 | 品牌标记 —— `build/whale-maid-small-monochrome-diagonal.svg`、`build/brand-mark*.png`、`build/brand-mark.jpg` | CC BY-NC-SA 4.0 | 条款同上，且这是第三方画作：见下文。 |
 | 字体 —— `build/great-vibes-latin.woff2` | SIL OFL 1.1 | 保留声明；不要单独售卖该字体。 |
-| 内联的两个半 —— `build/plugin-toggle.js`、`build/session-eva-status.js` | MIT（同作者的另两个插件） | 两份声明都要保留；它们同样被内联进 `client.js`。 |
+| 内联的那一半 —— `build/session-eva-status.js` | MIT（同作者的另一个插件） | 声明要保留；它同样被内联进 `client.js`。 |
 | 两张背景壁纸 | **外链热链，不随包分发，此处不授权。** | 本项目不向你授予它们的任何权利；下文的署名仅为出处标注。 |
 
 因为品牌标记禁止商业使用，**整个包不得用于商业用途**。单看 MIT 部分的代码不受此限；若你需要商业用途的构建，去掉品牌标记即可。

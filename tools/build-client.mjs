@@ -115,9 +115,9 @@ const cssPaint = css.replace(/\/\*[\s\S]*?\*\//g, '')
  *
  * Why the JS half is stripped too: these files are interpolated with the template hole
  * into a module factory, so their comments are compiled and discarded on every load.
- * The two VENDORED files (build/plugin-toggle.js, build/session-eva-status.js) are
- * deliberately NOT stripped: their comments are the provenance evidence that
- * cli.19/cli.23 pin ("移植自 …"), so removing them would destroy a contract.
+ * The VENDORED file (build/session-eva-status.js) is deliberately NOT stripped: its
+ * comments are the provenance evidence that cli.23 pins ("移植自 …"), so removing
+ * them would destroy a contract.
  * src/client.js was left out here in round 5 because cli.21 asserted the shipped bundle
  * still contains its header comment; round 6 made that gate change and now strips it too
  * (see P5d below, and docs/perf-report-4-2026-10-16.md).
@@ -454,60 +454,6 @@ const declarations = [
   `  --cp-brand-mark: url("data:image/svg+xml;base64,${brandMark}");`,
   '}',
 ].join('\n')
-
-/* ------------------------------------------- vendored: plugin toggle switch
- * 2026-10-06: the user asked to fold his own plugin `dsh-disable-unofficial-plugins`
- * v1.3.0 (MIT, same author — the display name in 设置 → 插件 is 「插件一键启停」) into
- * the theme, so one plugin does the skin AND the switch.
- *
- * This is a VENDOR, not a rewrite: `build/plugin-toggle.js` is the plugin's own
- * published client bundle, copied byte for byte, and what is embedded below is its
- * factory BODY (the part between `factory: () => {` and its final `return {...}`).
- * Re-implementing 1,300 lines of somebody's tested DOM code by hand would risk
- * silently changing behaviour; copying it keeps the switch identical and makes the
- * provenance checkable. Refresh it by copying the new lib/client.js over the copy.
- *
- * Two mechanical adaptations, both asserted so a future copy cannot drift silently:
- *   · the body is wrapped in an IIFE, so none of its ~90 top-level names can collide
- *     with the theme's own client code (`apply`, `sync`, `palette`, …);
- *   · nothing else — and that is deliberate. The body is injected with `${…}`
- *     INTERPOLATION, which copies the string verbatim, so its backticks and `${`
- *     need no escaping. (The first attempt escaped them anyway and produced a file
- *     containing a literal `\``, which broke the whole bundle: the app showed
- *     "Failed to load plugins / EVA-Inspired-Theme / import failed". Escaping is only
- *     ever needed for text written literally INSIDE this template, never for a value
- *     interpolated into it.)
- * Its `apply(ctx)` registers its own `ctx.effect` disposer, so the theme just calls
- * it once. The switch itself is inert until the remote/locale services exist. */
-const VENDOR_OPEN = 'factory: () => {'
-const VENDOR_TAIL = "return { name: SELF, apply, inject: ['remote', 'locale'] };"
-const vendorSrc = readFileSync(join(ROOT, 'build', 'plugin-toggle.js'), 'utf8')
-const vendorOpenAt = vendorSrc.indexOf(VENDOR_OPEN)
-const vendorTailAt = vendorSrc.indexOf(VENDOR_TAIL)
-if (vendorOpenAt < 0 || vendorTailAt < vendorOpenAt) {
-  throw new Error('build/plugin-toggle.js: factory boundaries not found — re-vendor it')
-}
-const vendorBody = vendorSrc.slice(vendorOpenAt + VENDOR_OPEN.length, vendorTailAt)
-if (!/function apply\(ctx\)/.test(vendorBody)) {
-  throw new Error('build/plugin-toggle.js: the factory body has no apply(ctx)')
-}
-if (new RegExp(VENDOR_TAIL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(vendorBody)) {
-  throw new Error('build/plugin-toggle.js: the tail marker leaked into the body')
-}
-const pluginToggleJs = [
-  '    /* --- 移植自 dsh-disable-unofficial-plugins v1.3.0（MIT，同一作者）---',
-  '     * 原样 vendor：下面这段是它 factory 的主体，只做了两处机械处理 ——',
-  '     * 包进 IIFE 避免与主题自己的 ~90 个顶层名字撞车、并按模板字符串转义。',
-  '     * 它自己的 apply(ctx) 会用 ctx.effect 注册清理，主题只负责调用一次。',
-  '     * P5e (round 7, 2026-10-16) 追加第三处：主体本身过 normaliseJs，',
-  '     * 即去掉行首缩进与 CR。于是它不再是逐字节副本，而是逐 token 副本 ——',
-  '     * 由 selfcheck 的 vend.1 每次运行重新切片比对，不以注释作证。',
-  '     * 注释一个不删：它们是这份 vendor 可被人工审阅的部分。 */',
-  '    var applyPluginToggle = (function () {',
-  normaliseJs(vendorBody),
-  '    ; return apply })()',
-].join('\n')
-
 /* ------------------------------------------- vendored: session status rail
  * 2026-10-09: the same treatment for the user's other plugin, `dsh-session-eva-status`
  * v0.1.0 (MIT, same author) — the session list's left rail: one colour per state, a
@@ -552,7 +498,7 @@ const sessionEvaStatusJs = [
   '     * 不包会与主题自己的名字撞车），以及用 ${…} 直接插值。',
   '     * 它自己的 apply(ctx) 用 ctx.effect 注册清理，主题只负责调用一次。',
   '     * P5e (round 7, 2026-10-16) 追加第三处：主体本身过 normaliseJs，',
-  '     * 同 plugin-toggle 一样，由 selfcheck 的 vend.2 以重新切片证明等价。 */',
+  '     * 由 selfcheck 的 vend.2 以重新切片证明等价。 */',
   '    var applySessionEvaStatus = (function () {',
   normaliseJs(statusBody),
   '    ; return apply })()',
@@ -669,18 +615,14 @@ const banner = `/**
  *      reads batches, not the whole document: records outside its own row are dropped
  *      before any query runs.
  *
- *   8. build/plugin-toggle.js — vendored byte for byte (MIT, same author) and
- *      wrapped in an IIFE; it registers the two disposers for the switch's own
- *      remote and locale services.
- *
- *   9. build/session-eva-status.js — the user's other plugin, vendored byte for byte
- *      (MIT, same author) and wrapped the same way. It registers the last disposer
+ *   8. build/session-eva-status.js — the user's other plugin, vendored byte for byte
+ *      (MIT, same author) and wrapped in an IIFE. It registers the last disposer
  *      and paints the session list's left rail (waiting on you / selected / unread
  *      completion, plus the pinned row's rainbow). Its own apply() reads the uiSession,
  *      sessions and workspaces services, which is why the exports map below names all
  *      three in its inject list.
  *
- * Ten is pinned by tools/selfcheck.mjs (cli.11d), so another effect cannot slip in
+ * Eight is pinned by tools/selfcheck.mjs (cli.11d), so another effect cannot slip in
  * unnoticed.
  *
  * The effect disposers are the whole uninstall story: the theme is one removable
@@ -712,7 +654,6 @@ window.__ModuleLoader__.load({
     var PICKER_CSS = ${JSON.stringify(minifyCss(stripBlockComments(pickerCss)))}
 ${compressJs(bootJs)}
 ${compressJs(pickerJs)}
-${pluginToggleJs}
 ${sessionEvaStatusJs}
 ${compressJs(clientJs)}
   },

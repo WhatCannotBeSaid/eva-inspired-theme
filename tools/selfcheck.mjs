@@ -794,12 +794,11 @@ checks.check('cli.11c', 'the client half writes browser storage only for the nam
   }
   return true
 })
-checks.check('cli.11d', 'the client half owns exactly eleven effects', () => {
+checks.check('cli.11d', 'the client half owns exactly eight effects', () => {
   /* Nine of these were already counted when rounds 41-45 built the 工作区 row's entry: five of the
      theme's own (token layer, liquid-glass maps, paint layer, boot mask, the brand row's three-zone
-     bridge since round 25), two registered from inside the vendored plugin-toggle switch, one from
-     the vendored session-status rail, and the ninth (round 39) the workspace-pin effect. The tenth is
-     the 工作区 row's entry. It was born as a Telegram filter (round 41), grew a 微信 filter beside it
+     bridge since round 25), one from the vendored session-status rail, and the seventh (round 39) the
+     workspace-pin effect. The eighth is the 工作区 row's entry. It was born as a Telegram filter (round 41), grew a 微信 filter beside it
      (round 42), became a single 微信 workspace switch (rounds 43-45), was put back on filtering the
      channel dsh-im stamps when the user swapped the plugins (round 48, 「我不想用dsh-wechat，给我把
      dsh-im换回来。包括工作区旁边的图标按钮及其功能。」), and went back to a pair of channel filters in
@@ -820,7 +819,7 @@ checks.check('cli.11d', 'the client half owns exactly eleven effects', () => {
      `left` beats any selector), and it has to follow the official placement across scroll, resize
      and ResizeObserver ticks -- a lifecycle the paint effect does not have. */
   const effects = client.match(/ctx\.effect\(/g) ?? []
-  if (effects.length !== 10) return `${effects.length} ctx.effect() calls, expected exactly 10`
+  if (effects.length !== 8) return `${effects.length} ctx.effect() calls, expected exactly 8`
   if (!/tag\.dataset\.pluginCss = PLUGIN_ID \+ '\/theme\.css'/.test(client)) {
     return 'the paint layer is not namespaced'
   }
@@ -828,7 +827,6 @@ checks.check('cli.11d', 'the client half owns exactly eleven effects', () => {
   if (!/'evangelion: brand row zones'/.test(client)) return 'the brand row bridge has no label'
   if (!/'evangelion: workspace pins'/.test(client)) return 'the workspace pin effect has no label'
   if (!/'evangelion: centred panels'/.test(client)) return 'the panel-centring effect has no label'
-  if (!/applyPluginToggle\(ctx\)/.test(client)) return 'the vendored toggle is never applied'
   return /applySessionEvaStatus\(ctx\)/.test(client) || 'the vendored session rail is never applied'
 })
 /* Round 24 (2026-10-07): liquid glass. The two halves of the effect live in two
@@ -894,17 +892,6 @@ checks.check('glass.3', 'the displacement map is drawn per element, not inlined 
   }
   return /getBoundingClientRect/.test(clientJs) || 'the map is no longer measured from the element'
 })
-/* The switch is VENDORED, not rewritten: `build/plugin-toggle.js` is the upstream
-   client bundle copied byte for byte, and the build slices its factory body into the
-   theme. These two checks pin the provenance and the wiring, so nobody can quietly
-   replace the copy with a hand-rolled version. */
-checks.check('cli.19', 'the plugin-toggle switch is the vendored upstream copy', () =>
-  (/移植自 dsh-disable-unofficial-plugins v1\.3\.0/.test(client) &&
-    /applyPluginToggle = \(function/.test(client)) ||
-  'the vendored toggle block is missing from client.js')
-checks.check('cli.20', 'the vendored switch still talks to the real remote service', () =>
-  (/remote\.pluginManager/.test(client) && /setBundleEnabled/.test(client)) ||
-  'the vendored switch lost its remote calls')
 /* Extraction of 2026-10-07: the glue used to be written inline in the build template,
    where reading it meant reading a template string. It lives in `src/client.js` now and
    is interpolated, so the invariants are (a) that file stays simple enough to be copied,
@@ -937,7 +924,7 @@ checks.check('cli.21', 'the mounting half lives in src/client.js, transformed by
     return 'the strip removed nothing, so this check proves nothing about the transform'
   }
   if (!client.includes(shipped)) return 'the bundle carries a different copy'
-  return /applyPluginToggle\(ctx\)/.test(clientJs) || 'src/client.js no longer applies the switch'
+  return /applySessionEvaStatus\(ctx\)/.test(clientJs) || 'src/client.js no longer applies the rail'
 })
 /* cli.21b is the argument cli.21's comment makes, run instead of asserted. Round 7's
    transform removes indentation and normalises CRLF. Both are invisible to the parser
@@ -1046,8 +1033,7 @@ checks.check('cli.22', 'the build reads the mounting half instead of inlining it
 })
 /* The second vendor (2026-10-09): `build/session-eva-status.js` is the upstream client
    bundle of the user's `dsh-session-eva-status` v0.1.0, copied byte for byte and sliced
-   into the theme the same way the switch is. The two checks below exist for the same
-   reasons cli.19/cli.20 do: the copy must stay the upstream copy (no hand-rolled
+   into the theme. The two checks below exist so the copy stays the upstream copy (no hand-rolled
    replacement under the same name), and it must still read the real services -- plus the
    invariant that makes those reads safe, that the theme's own exports.inject names the
    same services the vendored body requires, or apply() could run before they exist. */
@@ -1067,8 +1053,9 @@ checks.check('cli.24', 'the vendored rail still reads the real session services'
   return absent.length === 0 ||
     `exports.inject is missing ${absent.join(', ')} — apply() could run before they exist`
 })
-/* vend.1 / vend.2 (2026-10-16, round 7). Before this round the two vendored factory
-   bodies rode in the bundle byte for byte, and both files' own comments said so. Round 7
+/* vend.2 (2026-10-16, round 7; the switch's vend.1 was retired on 2026-10-25 when that
+   plugin became a standalone npm package). Before this round the vendored factory
+   body rode in the bundle byte for byte, and the file's own comment said so. Round 7
    normalises their layout (CRLF -> LF, leading indentation dropped) to stop shipping
    ~7,000 characters of indentation, which means the byte-for-byte claim is no longer true
    and must not be left standing in a comment. It is replaced here by a CHECKED claim of
@@ -1077,7 +1064,7 @@ checks.check('cli.24', 'the vendored rail still reads the real session services'
    property "this block is the upstream block" is still enforced — now it survives a
    formatting change, and a hand-edit to either the copy or the upstream file still fails.
 
-   What is deliberately NOT claimed any more: byte identity. Both bodies keep every
+   What is deliberately NOT claimed any more: byte identity. The body keeps every
    comment (that is the point of normalising rather than stripping them), so a reviewer
    can still read the vendored source in place. */
 const sliceVendor = (relative, open, tail) => {
@@ -1088,18 +1075,6 @@ const sliceVendor = (relative, open, tail) => {
   return src.slice(openAt + open.length, tailAt)
 }
 const normaliseVendor = (text) => text.replace(/\r\n?/g, '\n').replace(/^[ \t]+/gm, '')
-checks.check('vend.1', 'the plugin-toggle body in the bundle is the upstream body, minus layout', () => {
-  const body = sliceVendor('build/plugin-toggle.js', 'factory: () => {',
-    "return { name: SELF, apply, inject: ['remote', 'locale'] };")
-  if (body === null) return 'build/plugin-toggle.js: factory boundaries not found'
-  if (!/function apply\(ctx\)/.test(body)) return 'the sliced body has no apply(ctx)'
-  if (!client.includes(normaliseVendor(body))) return 'the bundle does not carry the normalised body'
-  if (normaliseVendor(body) === body) {
-    return 'the normalisation changed nothing, so this check cannot tell a re-vendor from a no-op'
-  }
-  return /移植自 dsh-disable-unofficial-plugins v1\.3\.0/.test(client) ||
-    'the provenance marker is gone from the bundle'
-})
 checks.check('vend.2', 'the session-status body in the bundle is the upstream body, minus layout', () => {
   const body = sliceVendor('build/session-eva-status.js', 'factory: () => {', 'return module.exports')
   if (body === null) return 'build/session-eva-status.js: factory boundaries not found'
@@ -1125,30 +1100,6 @@ checks.check('cli.27', 'the vendored rail still carries its three theme-side pat
   ]
   const missing = patches.filter(([, re]) => !re.test(client)).map(([name]) => name)
   return missing.length === 0 || `the vendored rail lost its patches: ${missing.join(', ')}`
-})
-/* D79 (2026-10-09): the switch is the second vendored block the theme patches by hand, so
-   the same reasoning as cli.27 applies — cli.19/cli.20 only check the provenance markers and
-   the remote calls, not the body. Five spots, all performance-only, none of them behavioural:
-   a refresh of the upstream copy that silently drops one would be a silent regression.
-   D82 (2026-10-10) added a sixth, and it *is* behavioural: the vendored switch now excludes
-   its host bundle as well as SELF, so the theme stops listing itself as disableable. That one
-   regresses invisibly too — the button merely reappears in its own list — so it is pinned
-   here as well, in the same one-entry-per-patch shape. */
-checks.check('cli.28', 'the vendored switch still carries its six theme-side patches', () => {
-  const patches = [
-    ['the reload sequence guard', /const seq = \(reloadSeq \+= 1\);/],
-    ['the single-slot reload debounce', /if \(!busy\) scheduleReload\(\);/],
-    ['the compare-then-write button text', /function setText\(el, text\) \{/],
-    ['the throttled body redraw', /force === true \|\| now - lastBodyAt >= BODY_REDRAW_MS/],
-    ['the Set-based reason dedupe', /new Set\(blocked\.map\(\(bundle\) => bundle\.readOnlyReason\)\)/],
-    /* Either half alone is useless — a probe nothing calls, or a call to a name that no longer
-       exists — so patch f's single entry asserts both, by lookahead rather than by adjacency
-       (the probe and its only call site are ~150 lines apart in the file). */
-    ['the host-bundle exclusion (D82)',
-      /(?=[\s\S]*function isSelfBundle\(name\) \{)(?=[\s\S]*if \(isSelfBundle\(bundle\.name\)\) continue;)/],
-  ]
-  const missing = patches.filter(([, re]) => !re.test(client)).map(([name]) => name)
-  return missing.length === 0 || `the vendored switch lost its patches: ${missing.join(', ')}`
 })
 /* Round 39 (2026-10-09): the workspace pin control. It is the theme's own code, so it is
    held to the theme's own standard: the row hook it selects on is the official data

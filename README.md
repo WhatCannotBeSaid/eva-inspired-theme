@@ -303,7 +303,7 @@ without licensing them. No trademark rights are granted here.
 | Project text — this README, `docs/`, `NOTICE`, `LICENSE` | CC BY-NC-SA 4.0 | Credit, link the licence, note changes, keep it non-commercial, share alike. |
 | Brand marks — `build/whale-maid-small-monochrome-diagonal.svg`, `build/brand-mark*.png`, `build/brand-mark.jpg` | CC BY-NC-SA 4.0 | Same terms, and this is third-party artwork: see below. |
 | Font — `build/great-vibes-latin.woff2` | SIL OFL 1.1 | Keep the notice; do not sell the font on its own. |
-| Vendored halves — `build/plugin-toggle.js`, `build/session-eva-status.js` | MIT (two other plugins, same author) | Keep both notices; they are inlined into `client.js` too. |
+| Vendored half — `build/session-eva-status.js` | MIT (another plugin, same author) | Keep the notice; it is inlined into `client.js` too. |
 | The two background wallpapers | **Hotlinked, not distributed, not licensed here.** | This project grants you no rights in them; the credits below are attribution only. |
 
 Because the brand marks forbid commercial use, **the package as a whole may not
