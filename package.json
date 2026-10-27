@@ -61,6 +61,7 @@
     "build:public": "node tools/build-client.mjs --mode public",
     "measure:resources": "node tools/measure-resources.mjs",
     "prepare": "node tools/build-client.mjs",
+    "prepack": "node tools/build-client.mjs --mode public",
     "check": "node tools/build-client.mjs --check",
     "selfcheck": "node tools/selfcheck.mjs",
     "audit": "node tools/token-audit.mjs",

@@ -41,8 +41,18 @@ jobs:
             exit 1
           fi
 
-      - name: 校验提交里的 client.js 与源码同步
-        run: node tools/build-client.mjs --check
+      # client.js 自 D79 起不进 git，所以这里不能要求它「已存在且与源码一致」——
+      # 那条检查在干净 checkout 上必然报 missing。改为就地构建被跟踪形态，
+      # 再跑一次 --check：构建器是纯函数式的，同一个输出既写盘又自检，
+      # 于是能通过就等于「这份 tarball 里的 client.js 确实由这些源码生成」。
+      #
+      # 必须显式 --mode public。CI runner 上没有 out/wallpapers.local.json，
+      # auto 会自然落到 public；写死 public 是为了让「发出去的包绝不内嵌画作」
+      # 这条边界表达在发布门禁里，而不是依赖 runner 文件系统的巧合。
+      - name: 就地构建 client.js 并自检（public 形态）
+        run: |
+          node tools/build-client.mjs --mode public
+          node tools/build-client.mjs --check --mode public
 
       - name: 校验 registry 上这个版本还没被占
         run: |
