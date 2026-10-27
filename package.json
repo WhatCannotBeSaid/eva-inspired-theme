@@ -14,6 +14,14 @@
     "eva-inspired-theme"
   ],
   "license": "(MIT AND CC-BY-NC-SA-4.0 AND OFL-1.1)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WhatCannotBeSaid/eva-inspired-theme.git"
+  },
+  "homepage": "https://github.com/WhatCannotBeSaid/eva-inspired-theme#readme",
+  "bugs": {
+    "url": "https://github.com/WhatCannotBeSaid/eva-inspired-theme/issues"
+  },
   "main": "index.js",
   "exports": {
     ".": "./index.js",
